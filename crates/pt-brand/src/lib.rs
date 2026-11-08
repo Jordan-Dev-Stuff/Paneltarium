@@ -207,7 +207,7 @@ mod tests {
             let rgba = icon_rgba(size);
             assert_eq!(rgba.len(), (size * size * 4) as usize);
             assert_eq!(at(&rgba, size, 0, 0)[3], 0, "{size}px: corner is transparent");
-            let px: Vec<&[u8]> = rgba.chunks(4).collect();
+            let px: Vec<&[u8; 4]> = rgba.as_chunks::<4>().0.iter().collect();
             let white = px.iter().filter(|p| p[0] > 200 && p[1] > 200 && p[2] > 200).count();
             let area = (size * size) as usize;
             assert!(white * 16 > area, "{size}px: display and planet drawn ({white} px)");
@@ -231,7 +231,10 @@ mod tests {
         let rgba = glyph_rgba(48, [255, 255, 255]);
         assert_eq!(at(&rgba, 48, 0, 47)[3], 0);
         assert!(
-            rgba.chunks(4).any(|p| p[3] == 255 && p[..3] == [255, 255, 255]),
+            rgba.as_chunks::<4>()
+                .0
+                .iter()
+                .any(|p| p[3] == 255 && p[..3] == [255, 255, 255]),
             "white planet"
         );
     }

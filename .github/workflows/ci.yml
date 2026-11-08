@@ -26,8 +26,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      # Pinned so a new Rust release (and its new clippy lints) can't break
+      # CI overnight. To upgrade: change it here and in release.yml, then fix
+      # whatever `cargo clippy` reports.
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: "1.97.0"
           components: clippy, rustfmt
 
       - name: Linux libraries (tray, global hotkeys, game controllers)

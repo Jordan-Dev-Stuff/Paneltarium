@@ -33,7 +33,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      # Same pinned version as ci.yml.
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97.0"
 
       - uses: Swatinem/rust-cache@v2
 

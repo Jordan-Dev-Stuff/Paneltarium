@@ -45,7 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for &s in &sizes {
             let icon = pt_brand::icon_rgba(s);
             let y0 = strip * (h / 2) + 16 + (128 - s) / 2;
-            for (i, px) in icon.chunks(4).enumerate() {
+            for (i, px) in icon.as_chunks::<4>().0.iter().enumerate() {
                 let (ix, iy) = (x + i as u32 % s, y0 + i as u32 / s);
                 let a = px[3] as f32 / 255.0;
                 let d = sheet.get_pixel_mut(ix, iy);

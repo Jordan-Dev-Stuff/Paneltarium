@@ -86,7 +86,7 @@ impl Canvas {
     /// Draw a square straight-RGBA8 image (e.g. the app icon) at (x, y).
     pub fn image(&mut self, rgba: &[u8], size: u32, x: f32, y: f32) {
         let (x0, y0) = (x.round() as i32, y.round() as i32);
-        for (i, px) in rgba.chunks_exact(4).enumerate() {
+        for (i, px) in rgba.as_chunks::<4>().0.iter().enumerate() {
             let (ix, iy) = ((i as u32 % size) as i32, (i as u32 / size) as i32);
             self.blend(x0 + ix, y0 + iy, Rgb(px[0], px[1], px[2]), px[3] as f32 / 255.0);
         }
