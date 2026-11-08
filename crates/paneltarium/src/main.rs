@@ -180,10 +180,12 @@ fn run(cli: Cli) -> Result<()> {
             gamepad_overlay,
             gamepad,
             startup,
+            overlay_mode,
             accent,
         } => {
             let mut s = svc.settings()?;
             let changing = startup.is_some()
+                || overlay_mode.is_some()
                 || accent.is_some()
                 || duplicate_hotkey.is_some()
                 || extend_hotkey.is_some()
@@ -209,6 +211,9 @@ fn run(cli: Cli) -> Result<()> {
                         StartupProfile::Profile(p.name)
                     }
                 };
+            }
+            if let Some(v) = overlay_mode {
+                s.overlay_mode = v.parse().map_err(anyhow::Error::msg)?;
             }
             if let Some(v) = accent {
                 s.accent_color = match v.trim().to_ascii_lowercase().as_str() {
@@ -245,6 +250,7 @@ fn run(cli: Cli) -> Result<()> {
                 );
                 println!("gamepad            = {}", if s.gamepad_enabled { "on" } else { "off" });
                 println!("startup_profile    = {}", s.startup_profile);
+                println!("overlay_mode       = {}", s.overlay_mode);
                 println!("accent_color       = {}", s.accent_color);
             }
         }

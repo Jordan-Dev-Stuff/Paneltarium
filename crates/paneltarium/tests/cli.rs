@@ -246,3 +246,17 @@ fn accent_colour_setting() {
         .success()
         .stdout(predicate::str::contains("accent_color       = #7C3AED"));
 }
+
+#[test]
+fn overlay_mode_setting() {
+    let env = Env::new();
+    env.cmd(&["settings"])
+        .success()
+        .stdout(predicate::str::contains("overlay_mode       = hold"));
+    env.cmd(&["settings", "--overlay-mode", "toggle"])
+        .success()
+        .stdout(predicate::str::contains("overlay_mode       = toggle"));
+    env.cmd(&["settings", "--overlay-mode", "maybe"])
+        .failure()
+        .stderr(predicate::str::contains("hold or toggle"));
+}

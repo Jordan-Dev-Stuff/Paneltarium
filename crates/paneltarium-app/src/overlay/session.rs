@@ -400,4 +400,22 @@ mod tests {
         assert!(!no_tracking.closes_on_modifier_release());
         assert!(no_tracking.hint().ends_with("Esc to close"));
     }
+
+    #[test]
+    fn stay_open_mode_ignores_letting_go() {
+        // "Stay open" is a keyboard session that doesn't track the release.
+        let mut s = Session::new(&profiles(), ctrl_alt(), &cur(Some("TV only")), Opener::Keyboard, false);
+        assert_eq!(s.handle(Input::ModifiersReleased), Decision::KeepOpen);
+        assert_eq!(s.handle(Input::Move(1)), Decision::Redraw);
+        assert_eq!(
+            s.hint(),
+            "Click a profile, press its number, or arrows + Enter · Esc to close"
+        );
+        assert_eq!(s.handle(Input::Digit(9)), Decision::Apply("LG only".into()));
+        assert_eq!(
+            s.handle(Input::Cancel),
+            Decision::Close,
+            "Esc or the hotkey again closes"
+        );
+    }
 }

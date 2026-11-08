@@ -55,7 +55,7 @@ the same picture on every monitor.
 
 | Press | To |
 |---|---|
-| **Ctrl+Alt+D** | open the profile list: press a number, use the arrows + Enter, or click; let go of Ctrl+Alt to cancel |
+| **Ctrl+Alt+D** | open the profile list: press a number, use the arrows + Enter, or click. Keep holding Ctrl+Alt (you can let go of D); let go to cancel. Prefer not to hold anything? Pick *stays open* in the profile manager. |
 | a profile's own hotkey (e.g. Ctrl+Alt+1) | switch straight to that profile |
 | **Ctrl+Alt+Shift+D** | rescue: same picture on every monitor |
 | controller **A + LB + RB + LT + RT** (hold) | open the profile list from the couch: D-pad to choose, let go to switch, B to cancel |
@@ -68,6 +68,8 @@ The **profile manager** (tray → *Open profile manager…*) is where you:
 - choose their numbers and record hotkeys
 - change the app's hotkeys and the controller buttons, or switch
   controllers off
+- choose whether the profile list needs Ctrl+Alt held or stays open on its
+  own
 - start Paneltarium with Windows, and choose what happens at sign-in:
   leave the monitors as they are, load the last profile you used, or load a
   specific one
@@ -129,6 +131,7 @@ paneltarium apply "TV only"
 paneltarium duplicate                        # same picture on every monitor
 paneltarium extend
 paneltarium settings --overlay-hotkey Ctrl+Alt+D --duplicate-hotkey Ctrl+Alt+Shift+D
+paneltarium settings --overlay-mode toggle   # list stays open without holding keys (or: hold)
 paneltarium settings --gamepad off           # or --gamepad-overlay A+LB+RB+LT+RT
 paneltarium settings --startup last          # at sign-in: none | last | a profile name
 paneltarium settings --accent "#7C3AED"      # accent colour (or "default")

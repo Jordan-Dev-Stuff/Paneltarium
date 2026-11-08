@@ -42,5 +42,5 @@ pub use paths::AppPaths;
 pub use plan::{ApplyPlan, PlannedMonitor};
 pub use profile::{Profile, ProfileStore};
 pub use service::{ApplyReport, MonitorService};
-pub use settings::Settings;
+pub use settings::{OverlayMode, Settings};
 pub use theme::{Color, Theme};

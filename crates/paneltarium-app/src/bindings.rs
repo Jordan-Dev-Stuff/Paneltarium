@@ -168,10 +168,63 @@ impl HotkeyRegistry {
     }
 }
 
+/// Turns a held hotkey into one press. Windows repeats a held hotkey
+/// (about 30×/s after half a second) and those repeats must not toggle the
+/// overlay or re-apply a profile. A hotkey counts again once its key was let
+/// go; if the release is never reported, after a second without repeats.
+#[derive(Debug, Default)]
+pub struct RepeatFilter {
+    down: std::collections::HashMap<u32, std::time::Instant>,
+}
+
+impl RepeatFilter {
+    const STUCK: std::time::Duration = std::time::Duration::from_secs(1);
+
+    /// A press of hotkey `id` at `now`: should it do anything?
+    pub fn press(&mut self, id: u32, now: std::time::Instant) -> bool {
+        match self.down.insert(id, now) {
+            Some(prev) => now.duration_since(prev) >= Self::STUCK,
+            None => true,
+        }
+    }
+
+    pub fn release(&mut self, id: u32) {
+        self.down.remove(&id);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use pt_core::testing::sample_layout;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn held_hotkey_acts_once() {
+        let mut f = RepeatFilter::default();
+        let t0 = Instant::now();
+        let ms = |n| t0 + Duration::from_millis(n);
+        assert!(f.press(7, t0), "first press acts");
+        // Auto-repeat while held: 500 ms delay, then every ~33 ms for 3 s.
+        assert!(!f.press(7, ms(500)));
+        for i in 0..90 {
+            assert!(!f.press(7, ms(533 + i * 33)), "repeat {i} ignored");
+        }
+        // Another hotkey isn't blocked by the held one.
+        assert!(f.press(8, ms(3600)));
+        // Let go, press again: acts.
+        f.release(7);
+        assert!(f.press(7, ms(3700)));
+    }
+
+    #[test]
+    fn missed_release_recovers_after_a_quiet_second() {
+        let mut f = RepeatFilter::default();
+        let t0 = Instant::now();
+        assert!(f.press(1, t0));
+        assert!(!f.press(1, t0 + Duration::from_millis(900)));
+        assert!(f.press(1, t0 + Duration::from_millis(2000)));
+    }
 
     fn hk(s: &str) -> Hotkey {
         s.parse().unwrap()

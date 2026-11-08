@@ -13,7 +13,7 @@ use std::sync::mpsc::{self, Receiver};
 
 use pt_core::gamepad::{ChordRecorder, GamepadChord};
 use pt_core::startup::StartupProfile;
-use pt_core::{AutostartStatus, Color, DisplayLayout, Hotkey, Theme};
+use pt_core::{AutostartStatus, Color, DisplayLayout, Hotkey, OverlayMode, Theme};
 use pt_gamepad::{GamepadWatcher, PadEvent};
 
 use crate::keys;
@@ -123,6 +123,7 @@ enum Act {
     StartupProfile(StartupProfile),
     /// Save this accent colour.
     Accent(Color),
+    OverlayMode(OverlayMode),
 }
 
 pub struct ManagerApp {
@@ -246,6 +247,7 @@ impl ManagerApp {
                     .and_then(|exe| self.model.set_autostart(on, &exe)),
             ),
             Act::StartupProfile(p) => Some(self.model.set_startup_profile(p)),
+            Act::OverlayMode(m) => Some(self.model.set_overlay_mode(m)),
             Act::Accent(c) => {
                 self.accent_pending = None;
                 set_accent(&self.ctx, c);
@@ -680,6 +682,11 @@ impl ManagerApp {
                 if let Some(a) = hotkey_editor(ui, &target, current, &mut self.app_bufs[i], recording) {
                     acts.push(a);
                 }
+                if which == AppHotkey::Overlay
+                    && let Some(hk) = current
+                {
+                    overlay_mode_choice(ui, hk, self.model.settings.overlay_mode, acts);
+                }
                 ui.add_space(6.0);
             }
             ui.label(
@@ -915,6 +922,43 @@ impl ManagerApp {
 }
 
 /// Current hotkey chip + Record/Clear, and below it a text box to type one.
+/// "Hold Ctrl+Alt" vs "stays open", spelled out for the actual hotkey.
+fn overlay_mode_choice(ui: &mut Ui, hk: Hotkey, mode: OverlayMode, acts: &mut Vec<Act>) {
+    let m = hk.modifiers;
+    let held: Vec<&str> = [(m.ctrl, "Ctrl"), (m.alt, "Alt"), (m.shift, "Shift"), (m.win, "Win")]
+        .into_iter()
+        .filter_map(|(on, n)| on.then_some(n))
+        .collect();
+    ui.add_space(2.0);
+    ui.label(
+        RichText::new("After pressing it, the profile list…")
+            .size(12.0)
+            .color(MUTED),
+    );
+    let hold_label = if held.is_empty() {
+        "Closes when you let go of the hotkey".to_string()
+    } else {
+        format!(
+            "Stays open while you hold {} (you can let go of {}); let go to cancel",
+            held.join("+"),
+            hk.key
+        )
+    };
+    if ui.radio(mode == OverlayMode::Hold, hold_label).clicked() && mode != OverlayMode::Hold {
+        acts.push(Act::OverlayMode(OverlayMode::Hold));
+    }
+    if ui
+        .radio(
+            mode == OverlayMode::Toggle,
+            "Stays open without holding anything, until you pick a profile or press Esc",
+        )
+        .clicked()
+        && mode != OverlayMode::Toggle
+    {
+        acts.push(Act::OverlayMode(OverlayMode::Toggle));
+    }
+}
+
 fn hotkey_editor(
     ui: &mut Ui,
     target: &Target,

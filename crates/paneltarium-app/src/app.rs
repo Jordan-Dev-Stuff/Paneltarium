@@ -17,7 +17,7 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoopProxy};
 use winit::window::WindowId;
 
-use crate::bindings::{self, Action, HotkeyRegistry};
+use crate::bindings::{self, Action, HotkeyRegistry, RepeatFilter};
 use crate::overlay::Overlay;
 use crate::overlay::session::{Decision, Input, Opener};
 use crate::tray::{self, Status, Tray};
@@ -56,6 +56,8 @@ pub struct App {
     hotkeys: HotkeyRegistry,
     worker: Worker,
     overlay: Overlay,
+    /// Ignores a held hotkey's auto-repeat.
+    repeats: RepeatFilter,
     tray: Option<Tray>,
     status: Status,
     settings: Settings,
@@ -88,6 +90,7 @@ impl App {
             hotkeys,
             worker,
             overlay: Overlay::new(pt_platform::keyboard_state()),
+            repeats: RepeatFilter::default(),
             tray: None,
             status: Status::default(),
             settings: Settings::default(),
@@ -157,6 +160,7 @@ impl App {
         );
 
         self.overlay.set_theme(settings.theme());
+        self.overlay.set_mode(settings.overlay_mode);
         self.status.overlay = settings.overlay_hotkey;
         self.status.rescue = settings.duplicate_hotkey;
         self.status.gamepad_enabled = settings.gamepad_enabled;
@@ -179,7 +183,13 @@ impl App {
     }
 
     fn on_hotkey(&mut self, event_loop: &ActiveEventLoop, event: GlobalHotKeyEvent) {
-        if event.state != HotKeyState::Pressed {
+        if event.state == HotKeyState::Released {
+            self.repeats.release(event.id);
+            return;
+        }
+        // Holding a hotkey makes Windows repeat it; act on the first press only
+        // (otherwise holding Ctrl+Alt+D flashes the overlay open and shut).
+        if !self.repeats.press(event.id, std::time::Instant::now()) {
             return;
         }
         // While the overlay is open its digits/Esc win over everything else
