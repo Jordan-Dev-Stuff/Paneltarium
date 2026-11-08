@@ -54,6 +54,23 @@ pub fn keyboard_state() -> Box<dyn KeyboardState> {
     }
 }
 
+/// Is the Steam client running? (Steam's own controllers are only read
+/// while it is; see `pt-gamepad`.)
+pub fn steam_running() -> bool {
+    #[cfg(windows)]
+    {
+        windows::steam_running()
+    }
+    #[cfg(target_os = "linux")]
+    {
+        linux::steam_running()
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
+    {
+        false
+    }
+}
+
 /// Give a borderless window rounded corners of `radius` physical pixels.
 /// Best effort: does nothing where the OS can't (yet).
 pub fn round_window_corners<W: HasWindowHandle + ?Sized>(window: &W, width: u32, height: u32, radius: u32) {

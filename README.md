@@ -25,13 +25,20 @@ need a keyboard for any of it.
 - **Works while you play.** Paneltarium listens in the background, and the
   profile list doesn't take focus away from your game. It shows over
   borderless and windowed games; a game in exclusive fullscreen may hide it.
-- **Any Xbox-compatible (XInput) controller.** That covers Xbox
-  controllers and most PC pads in XInput mode. PlayStation and Switch
-  controllers work when they're mapped to XInput, for example by Steam
-  Input.
-- **Your combination, your call.** Record any button combination in the
-  profile manager, or turn controller support off with one switch. Your
-  combination is kept for when you turn it back on.
+- **Xbox, PlayStation, Switch and Steam controllers.** Xbox and other
+  XInput pads, DualShock 4 and DualSense, Switch Pro, Joy-Cons and Switch 2
+  controllers work directly, with no extra drivers or tools, wired or
+  Bluetooth. So do many other pads, through
+  [SDL](https://libsdl.org)'s controller support.
+- **Steam Controller too.** While Steam is running, Paneltarium reads the
+  Steam Controller directly, even on the desktop, where Steam turns its
+  buttons into keys and mouse clicks. (Those still happen too; a
+  combination of back buttons like **L4 + R4** avoids stray clicks.)
+- **Your combination, your call.** Record any button combination, back
+  paddles included, in the profile manager, or turn controller support off
+  with one switch. Your combination is kept for when you turn it back on.
+- **Check what it sees:** `paneltarium gamepads --watch` lists your
+  controllers and shows each button press live.
 
 ## Get started
 
@@ -164,7 +171,9 @@ manager; the others keep working.
 
 ### Build from source
 
-Requires Rust 1.90+ (`rustup update`) and, on Windows, the MSVC toolchain.
+You need Rust, a C/C++ compiler and CMake; [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
+has copy-paste setup commands for Windows and Linux, and how to run and
+test everything.
 
 ```powershell
 cargo build --release                # all three programs, in target\release
@@ -205,7 +214,7 @@ cargo build --release
 crates/
   pt-core/              OS-neutral: model, profiles, hotkeys, matching, theme, traits, mock
   pt-platform/          OS-specific code (src/windows/ today)
-  pt-gamepad/           reads game controllers on a background thread (gilrs)
+  pt-gamepad/           reads game controllers on a background thread (SDL 3)
   pt-brand/             the app icon (planet in a display), drawn at any size
   paneltarium/          command line
   paneltarium-app/      tray app: hotkeys, profile overlay, tray icon
@@ -216,12 +225,13 @@ installer/              Inno Setup script for the Windows installer
 docs/
   ARCHITECTURE.md       how the pieces fit, key decisions
   ROADMAP.md            testable steps, with what to check at each one
+  DEVELOPMENT.md        setting up, building, running and testing
 ```
 
 ### Tests
 
 ```powershell
-cargo test            # 157 tests on Windows (151 elsewhere), no real monitors needed
+cargo test            # 167 tests on Windows (161 elsewhere), no real monitors needed
 cargo clippy --all-targets
 ```
 

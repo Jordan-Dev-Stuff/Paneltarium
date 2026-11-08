@@ -19,7 +19,7 @@ use winit::window::WindowId;
 
 use crate::bindings::{self, Action, HotkeyRegistry, RepeatFilter};
 use crate::overlay::Overlay;
-use crate::overlay::session::{Decision, Input, Opener};
+use crate::overlay::session::{Decision, Input, NavDedupe, Opener, Source};
 use crate::tray::{self, Status, Tray};
 use crate::watcher::{self, ConfigWatcher};
 use crate::worker::{Job, Outcome, Worker};
@@ -58,6 +58,9 @@ pub struct App {
     overlay: Overlay,
     /// Ignores a held hotkey's auto-repeat.
     repeats: RepeatFilter,
+    /// Ignores a press that reaches the overlay twice (controller + Steam's
+    /// keys for it).
+    nav: NavDedupe,
     tray: Option<Tray>,
     status: Status,
     settings: Settings,
@@ -91,6 +94,7 @@ impl App {
             worker,
             overlay: Overlay::new(pt_platform::keyboard_state()),
             repeats: RepeatFilter::default(),
+            nav: NavDedupe::default(),
             tray: None,
             status: Status::default(),
             settings: Settings::default(),
@@ -195,7 +199,7 @@ impl App {
         // While the overlay is open its digits/Esc win over everything else
         // (including a profile hotkey that uses the same combo).
         if let Some(input) = self.overlay.input_for(event.id) {
-            self.overlay_input(input);
+            self.nav_input(Source::Keyboard, input);
             return;
         }
         let Some(action) = self.hotkeys.action_for(event.id).cloned() else {
@@ -215,16 +219,22 @@ impl App {
         let Some(chord) = self.settings.active_gamepad_chord().cloned() else {
             return;
         };
-        // While a controller-opened overlay is up: D-pad moves, B cancels.
-        if ev.pressed && self.overlay.opener() == Some(Opener::Gamepad) {
+        // While the overlay is up (opened by the controller *or* the
+        // keyboard, e.g. via a Steam chord): D-pad moves, B cancels, and A
+        // picks when it wasn't opened by holding the controller combination
+        // (then letting go picks).
+        if ev.pressed
+            && let Some(opener) = self.overlay.opener()
+        {
             let input = match ev.button {
                 Button::DpadUp | Button::DpadLeft => Some(Input::Move(-1)),
                 Button::DpadDown | Button::DpadRight => Some(Input::Move(1)),
                 Button::B if !chord.contains(Button::B) => Some(Input::Cancel),
+                Button::A if opener == Opener::Keyboard => Some(Input::Confirm),
                 _ => None,
             };
             if let Some(i) = input {
-                self.overlay_input(i);
+                self.nav_input(Source::Pad(ev.pad), i);
             }
         }
         let tracker = self.pads.entry(ev.pad).or_default();
@@ -297,6 +307,16 @@ impl App {
         tracing::info!("on screen now: {current:?}");
         self.overlay
             .open(event_loop, trigger, opener, &profiles, &current, &mut self.hotkeys);
+    }
+
+    /// Arrow keys, Enter, Esc and their controller equivalents, minus
+    /// duplicates of one press arriving from two sources (see [`NavDedupe`]).
+    fn nav_input(&mut self, source: Source, input: Input) {
+        if self.nav.accept(source, input, std::time::Instant::now()) {
+            self.overlay_input(input);
+        } else {
+            tracing::debug!("ignored duplicate {input:?} from {source:?}");
+        }
     }
 
     fn overlay_input(&mut self, input: Input) {

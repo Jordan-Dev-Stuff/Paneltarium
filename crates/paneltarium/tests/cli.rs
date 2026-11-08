@@ -260,3 +260,14 @@ fn overlay_mode_setting() {
         .failure()
         .stderr(predicate::str::contains("hold or toggle"));
 }
+
+#[test]
+fn gamepads_lists_and_watches() {
+    let env = Env::new();
+    env.cmd(&["gamepads"])
+        .success()
+        .stdout(predicate::str::contains("Overlay combination: A+LB+RB+LT+RT"));
+    env.cmd(&["gamepads", "--watch", "--seconds", "1"])
+        .success()
+        .stdout(predicate::str::contains("Watching"));
+}

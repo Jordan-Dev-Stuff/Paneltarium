@@ -116,6 +116,16 @@ pub enum Command {
         action: AutostartAction,
     },
 
+    /// List connected game controllers. With --watch, also show button
+    /// presses live (Ctrl+C to stop), to check what Paneltarium receives.
+    Gamepads {
+        #[arg(long)]
+        watch: bool,
+        /// Stop watching after this many seconds.
+        #[arg(long, value_name = "SECONDS")]
+        seconds: Option<u64>,
+    },
+
     /// Show where profiles and settings are stored.
     Paths,
 }

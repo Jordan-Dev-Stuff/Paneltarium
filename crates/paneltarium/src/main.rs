@@ -293,12 +293,113 @@ fn run(cli: Cli) -> Result<()> {
             );
         }
 
+        Command::Gamepads { watch, seconds } => gamepads(&svc, watch, seconds)?,
+
         Command::Paths => {
             let p = svc.paths();
             println!("config:   {}", p.root().display());
             println!("profiles: {}", p.profiles_dir().display());
             println!("settings: {}", p.settings_file().display());
             println!("backend:  {}", svc.backend().name());
+        }
+    }
+    Ok(())
+}
+
+/// `paneltarium gamepads [--watch]`.
+fn gamepads(svc: &MonitorService, watch: bool, seconds: Option<u64>) -> Result<()> {
+    use pt_gamepad::{Event, GamepadWatcher};
+    use std::collections::{BTreeMap, BTreeSet};
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
+
+    let settings = svc.settings()?;
+    let (tx, rx) = mpsc::channel();
+    let _watcher = GamepadWatcher::spawn_events(true, move |e| {
+        let _ = tx.send(e);
+    });
+    let mut names: BTreeMap<usize, String> = BTreeMap::new();
+
+    // Controllers already plugged in are reported right after start-up.
+    let settle = Instant::now() + Duration::from_millis(1500);
+    while let Some(left) = settle.checked_duration_since(Instant::now()) {
+        match rx.recv_timeout(left) {
+            Ok(Event::Connected { pad, name }) => {
+                names.insert(pad, name);
+            }
+            Ok(_) => {}
+            Err(_) => break,
+        }
+    }
+    if names.is_empty() {
+        println!("No game controllers found.");
+    } else {
+        println!("Game controllers:");
+        for (pad, name) in &names {
+            println!("  #{pad}  {name}");
+        }
+    }
+    println!(
+        "Steam is {}running{}",
+        if pt_platform::steam_running() { "" } else { "not " },
+        if pt_platform::steam_running() {
+            "; Steam Controllers are read too."
+        } else {
+            "; Steam Controllers are only read while it runs."
+        }
+    );
+    let chord = settings.active_gamepad_chord().cloned();
+    match &chord {
+        Some(c) => println!("Overlay combination: {c}"),
+        None => println!("Overlay combination: off (controllers are switched off in settings)"),
+    }
+    if !watch {
+        return Ok(());
+    }
+
+    println!("\nWatching. Press buttons; Ctrl+C to stop.");
+    let until = seconds.map(|s| Instant::now() + Duration::from_secs(s));
+    let mut held: BTreeMap<usize, BTreeSet<pt_core::gamepad::Button>> = BTreeMap::new();
+    loop {
+        let wait = match until {
+            Some(t) => match t.checked_duration_since(Instant::now()) {
+                Some(d) => d,
+                None => break,
+            },
+            None => Duration::from_secs(3600),
+        };
+        let event = match rx.recv_timeout(wait) {
+            Ok(e) => e,
+            Err(mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        };
+        match event {
+            Event::Connected { pad, name } => {
+                println!("+ #{pad} connected: {name}");
+                names.insert(pad, name);
+            }
+            Event::Disconnected { pad } => {
+                println!("- #{pad} disconnected");
+                held.remove(&pad);
+            }
+            Event::Button(b) => {
+                let set = held.entry(b.pad).or_default();
+                if b.pressed {
+                    set.insert(b.button);
+                } else {
+                    set.remove(&b.button);
+                }
+                let now: Vec<&str> = set.iter().map(|b| b.name()).collect();
+                let complete = chord.as_ref().is_some_and(|c| c.buttons().all(|cb| set.contains(&cb)));
+                println!(
+                    "  #{} {:<10} {:<4}  held: {}{}",
+                    b.pad,
+                    b.button.name(),
+                    if b.pressed { "down" } else { "up" },
+                    if now.is_empty() { "-".to_string() } else { now.join("+") },
+                    if complete { "   <- overlay combination" } else { "" }
+                );
+            }
         }
     }
     Ok(())

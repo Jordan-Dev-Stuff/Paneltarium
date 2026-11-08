@@ -16,6 +16,7 @@ Each step ends in something you can run and check before moving on.
 | 8b | Manager polish: bring an open window to front | (window icon done in 9b) |
 | 9 | Start at sign-in + sign-in profile | ✅ written, tested on Linux/mock — **verify on your PC** |
 | 9b | Rename to Paneltarium, new icon, review of monitor edge cases | ✅ written — **verify on your PC** |
+| 9c | Controllers via SDL 3 (PlayStation, Switch, Steam Controller) | ✅ written — **verify with your controllers** |
 | 10 | CLI ↔ running app (IPC) | ⏭ next (or 11 first) |
 | 11 | Installer + release CI | ✅ written, linted — **verify with your first tag** |
 | 12 | Linux backend (future) | |
@@ -208,11 +209,8 @@ the previous profile (verified in a test run). Mouse and keyboard keep working t
   on|off`. Off stops reading controllers entirely and keeps the combination.
 - `pt_core::gamepad` (pure, tested): buttons + aliases, the combination
   type, `ChordTracker` (held / let go) and `ChordRecorder`.
-- `crates/pt-gamepad`: a background thread reading controllers with
-  `gilrs`. **Windows uses XInput**, because Windows.Gaming.Input only reports
-  input to the focused window and a game will have focus. XInput covers
-  Xbox-compatible pads; PlayStation pads work through Steam Input or
-  DS4Windows. Linux uses evdev (needs `libudev`).
+- `crates/pt-gamepad`: a background thread reading controllers (with
+  `gilrs` at first; SDL 3 since step 9c).
 
 **Check with your controller:**
 1. Tray menu shows "Controller overlay: hold A+LB+RB+LT+RT" and a checked
@@ -368,6 +366,34 @@ standard approach is a per-user app started at sign-in.
 4. Unplug one monitor and apply a profile that uses it → the others stay
    on and touch each other.
 5. Then delete `C:\Git\MonitorPilot` and `%APPDATA%\MonitorPilot`.
+
+## 9c. Controllers via SDL 3 ✅ (verify)
+
+- `pt-gamepad` reads controllers with SDL 3 instead of `gilrs`: Xbox/XInput
+  pads as before, plus DualShock 4/DualSense, Switch Pro, Joy-Con, Switch 2
+  and the Steam Controller, directly (no DS4Windows or Steam Input needed).
+- SDL is compiled from source (needs CMake) with only its controller parts,
+  linked statically: about 1–1.5 MB per program.
+- Settings: background events on, Windows.Gaming.Input off, PlayStation
+  enhanced reports "auto" (SDL doesn't switch their report mode). Valve
+  controllers only while Steam runs (re-checked every 5 s).
+- New buttons usable in combinations: back paddles `L4`/`R4`/`L5`/`R5`,
+  `Misc` (Share/mic/capture/Steam QAM), `Touchpad`.
+- Any controller can steer an open overlay (D-pad moves, A picks if the
+  keyboard opened it, B cancels); one press arriving twice (controller +
+  Steam's arrow key, or Steam's virtual pad) only counts once.
+- `paneltarium gamepads [--watch]` lists controllers and shows presses live.
+
+**Check:**
+1. With Steam running: `paneltarium gamepads --watch` lists the Steam
+   Controller; pressing buttons prints them, and holding the overlay
+   combination prints "<- overlay combination".
+2. Same with a PlayStation or Switch controller, with Steam closed.
+3. Hold the combination on each → overlay opens; D-pad moves exactly one row
+   per press (not two); let go → applies.
+4. Close Steam: the Steam Controller drops out of `gamepads` within ~5 s and
+   its built-in mouse mode keeps working.
+5. Open the overlay with Ctrl+Alt+D, then use a controller's D-pad and A.
 
 ## 10. CLI ↔ running app
 
