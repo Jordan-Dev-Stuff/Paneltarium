@@ -81,7 +81,7 @@ jobs:
           $v = "${{ steps.version.outputs.version }}"
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item "target\installer\Paneltarium-$v-setup.exe" dist\
-          Compress-Archive -Path target\release\paneltarium.exe, target\release\paneltarium-app.exe, target\release\paneltarium-manager.exe, README.md `
+          Compress-Archive -Path target\release\paneltarium.exe, target\release\paneltarium-app.exe, target\release\paneltarium-manager.exe, README.md, LICENSE `
             -DestinationPath "dist\Paneltarium-$v-portable.zip"
           Get-ChildItem dist | ForEach-Object {
             "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"

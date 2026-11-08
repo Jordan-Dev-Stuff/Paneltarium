@@ -2,8 +2,8 @@
 
 # Paneltarium
 
-**Switch between your monitor setups with one key.** A lightweight, fast
-Windows tray app written in Rust.
+**Switch between your monitor setups with one key, or from your game
+controller.** A lightweight, fast Windows tray app written in Rust.
 
 Paneltarium doesn't replace Windows' display settings. You still arrange
 your monitors the usual way, in **Settings → System → Display** (or your
@@ -13,6 +13,25 @@ everything on, presentation, and so on.
 
 A profile remembers which monitors are on, and each one's resolution,
 refresh rate, position, rotation and which one is the main display.
+
+## Switch from the couch 🎮
+
+Gaming on the TV, streaming to a handheld, back to the desk: you don't
+need a keyboard for any of it.
+
+- **Hold A + LB + RB + LT + RT** on your controller to bring up your
+  profiles, **D-pad** to pick one, **let go** to switch. Press **B** to
+  cancel.
+- **Works while you play.** Paneltarium listens in the background, and the
+  profile list doesn't take focus away from your game. It shows over
+  borderless and windowed games; a game in exclusive fullscreen may hide it.
+- **Any Xbox-compatible (XInput) controller.** That covers Xbox
+  controllers and most PC pads in XInput mode. PlayStation and Switch
+  controllers work when they're mapped to XInput, for example by Steam
+  Input.
+- **Your combination, your call.** Record any button combination in the
+  profile manager, or turn controller support off with one switch. Your
+  combination is kept for when you turn it back on.
 
 ## Get started
 
@@ -26,7 +45,8 @@ in*). Then:
    **Open profile manager…** → **Save current setup**, and give it a name.
    Repeat steps 1–2 for each setup you use.
 3. **Switch:** press **Ctrl+Alt+D**, keep holding Ctrl+Alt, and press the
-   profile's number (or click it).
+   profile's number (or click it). On a controller, hold
+   **A + LB + RB + LT + RT** and use the D-pad.
 
 That's it. Lost a screen and can't see anything? **Ctrl+Alt+Shift+D** shows
 the same picture on every monitor.
@@ -205,3 +225,12 @@ cargo clippy --all-targets
 The tests use a fake monitor backend that rejects the same layouts Windows
 would. You can use it by hand too: set `$env:PANELTARIUM_MOCK_LAYOUT` to a
 TOML layout file and `$env:PANELTARIUM_HOME` to a scratch folder.
+
+## License
+
+Paneltarium is open source under the [MIT License](LICENSE).
+
+It builds on other open-source work, including the
+[Phosphor Icons](https://phosphoricons.com) (MIT), the Ubuntu font bundled
+with [egui](https://github.com/emilk/egui) (Ubuntu Font Licence), and the Rust
+crates listed in `Cargo.lock`, each under its own licence.

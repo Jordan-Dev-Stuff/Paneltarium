@@ -52,6 +52,7 @@ Source: "{#Bin}\paneltarium-app.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Bin}\paneltarium-manager.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Bin}\paneltarium.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion isreadme
+Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\Paneltarium"; Filename: "{app}\{#AppExe}"; Comment: "Start the Paneltarium tray app"
