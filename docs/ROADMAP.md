@@ -20,6 +20,8 @@ Each step ends in something you can run and check before moving on.
 | 10 | CLI ↔ running app (IPC) | ⏭ next (or 11 first) |
 | 11 | Installer + release CI | ✅ written, linted — **verify with your first tag** |
 | 12 | Linux backend (future) | |
+| 13 | Accent colour from the OS (Windows, GNOME, KDE, …) | planned |
+| 14 | HDR in profiles: save, show and apply it per monitor | planned |
 
 ---
 
@@ -441,3 +443,70 @@ standard approach is a per-user app started at sign-in.
 - `tray-icon` works on Linux (needs GTK); `global-hotkey` works on X11, while
   Wayland needs the GlobalShortcuts portal.
 - Autostart: `~/.config/autostart/paneltarium.desktop`.
+
+## 13. Accent colour from the OS (planned)
+
+Let the overlay and manager follow the system accent colour, with the
+current colour picker as the override.
+
+- Setting: `accent_color = "system"` (new default) or `"#RRGGBB"`. The
+  Appearance card gets a *Use my system's accent colour* option above the
+  presets; `paneltarium settings --accent system`.
+- `pt-core`: trait `AccentSource { fn accent(&self) -> Option<Color> }`, with
+  a fallback to purple when the OS has none. `Theme` already derives the
+  readable text colour and the dark tint, so any colour works, including
+  light ones.
+- `pt-platform`, one implementation per OS:
+  - **Windows:** `UISettings::GetColorValue(UIColorType::Accent)` (WinRT), or
+    the `HKCU\Software\Microsoft\Windows\DWM\AccentColor` registry value
+    (ABGR). Changes arrive as `WM_SETTINGCHANGE` ("ImmersiveColorSet").
+  - **Linux (any desktop):** the XDG Settings portal,
+    `org.freedesktop.appearance` / `accent-color` (an RGB triple), with its
+    `SettingChanged` signal for live updates. GNOME 47+ and KDE Plasma
+    provide it; others are adopting it.
+  - **Fallbacks:** GNOME's `org.gnome.desktop.interface accent-color` (a
+    named colour: blue, teal, green, …) and KDE's `AccentColor` in
+    `kdeglobals`, for older portals.
+- The tray app and manager re-read it when the OS reports a change, so the
+  overlay matches the next time it opens.
+
+**Check:** change the accent colour in Windows Settings → Personalization
+→ Colors (or GNOME/KDE settings): the manager updates within a second, and
+the overlay shows the new colour next time. Pick a preset → it overrides
+the system colour; *Use my system's accent colour* → follows it again.
+
+## 14. HDR in profiles (planned)
+
+Save whether HDR is on for each monitor, show it, and switch it with the
+profile (e.g. "TV only" turns HDR on, "Desk" turns it off).
+
+- Model: `MonitorState.hdr: Option<bool>`. `None` means "leave it as it
+  is", so older profiles and monitors without HDR keep working unchanged.
+  Saved only for monitors that support it.
+- Read/write (Windows, `pt-platform/src/windows/ccd.rs`):
+  `DisplayConfigGetDeviceInfo` / `DisplayConfigSetDeviceInfo` with
+  `DISPLAYCONFIG_DEVICE_INFO_GET_ADVANCED_COLOR_INFO` and
+  `…_SET_ADVANCED_COLOR_STATE` (Windows 10 and later). Windows 11 24H2
+  split "HDR" from "advanced colour" and added newer requests
+  (`…_GET_ADVANCED_COLOR_INFO_2`, `…_SET_HDR_STATE`); use those when
+  available. Check the exact structures against the current Windows SDK
+  first.
+- Applying: after `SetDisplayConfig` (HDR needs the monitor on, at its final
+  mode), set HDR per monitor, then read it back. A mismatch is reported like
+  the other "differences after applying" (e.g. the cable or mode doesn't
+  allow HDR).
+- Matching: `current::matches` compares HDR only where the profile saved it,
+  so the overlay's "on screen now" tick stays correct.
+- Shown in: the overlay row detail ("3840x2160 @ 120 Hz · HDR"), the manager's
+  monitor list and layout preview, `paneltarium monitors` / `show`, and the
+  JSON output.
+- Possibly later: SDR content brightness (Windows exposes reading it; setting
+  it isn't a documented API), and Auto HDR, which is per game rather than per
+  monitor.
+- Linux (with step 12): KDE `kscreen-doctor output.N.hdr.enable`, GNOME's
+  `org.gnome.Mutter.DisplayConfig` colour mode.
+
+**Check:** save a profile with HDR on for the TV and another with it off;
+switching between them toggles HDR in Windows Settings → Display → HDR, the
+overlay shows "HDR" on the right rows, and the tick follows. A monitor
+without HDR support never shows or changes it.
