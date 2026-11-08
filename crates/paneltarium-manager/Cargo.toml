@@ -1,0 +1,25 @@
+[package]
+name = "paneltarium-manager"
+description = "Paneltarium profile manager window (egui; shared between Windows and Linux)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "paneltarium-manager"
+path = "src/main.rs"
+
+[dependencies]
+pt-core.workspace = true
+pt-platform.workspace = true
+pt-gamepad.workspace = true
+pt-brand.workspace = true
+eframe.workspace = true
+egui-phosphor = { workspace = true, features = ["regular", "fill"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[build-dependencies]
+winresource.workspace = true

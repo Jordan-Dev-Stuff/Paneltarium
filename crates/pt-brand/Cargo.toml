@@ -1,0 +1,14 @@
+[package]
+name = "pt-brand"
+description = "Paneltarium's app icon (a planet inside a display), drawn at any size"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+ab_glyph.workspace = true
+egui-phosphor = { workspace = true, features = ["bold", "fill"] }
+
+[dev-dependencies]
+image = { version = "0.25", default-features = false, features = ["png", "ico"] }

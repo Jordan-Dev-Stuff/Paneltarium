@@ -1,0 +1,40 @@
+[package]
+name = "paneltarium-app"
+description = "Paneltarium background app: global hotkeys, profile overlay and tray icon."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "paneltarium-app"
+path = "src/main.rs"
+
+[dependencies]
+pt-core.workspace = true
+pt-platform.workspace = true
+pt-gamepad.workspace = true
+ab_glyph.workspace = true
+egui-phosphor = { workspace = true, features = ["fill"] }
+pt-brand.workspace = true
+epaint_default_fonts.workspace = true
+global-hotkey.workspace = true
+notify.workspace = true
+softbuffer.workspace = true
+tracing.workspace = true
+tracing-appender.workspace = true
+tracing-subscriber.workspace = true
+tray-icon.workspace = true
+winit.workspace = true
+
+# Linux: the tray icon is a GTK widget, so GTK must be initialised and its
+# events pumped (same version tray-icon uses).
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"
+
+[dev-dependencies]
+tempfile.workspace = true
+toml.workspace = true
+
+[build-dependencies]
+winresource.workspace = true

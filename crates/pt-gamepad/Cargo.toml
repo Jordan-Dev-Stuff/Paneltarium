@@ -1,0 +1,21 @@
+[package]
+name = "pt-gamepad"
+description = "Reads game controllers on a background thread (gilrs) and reports pt-core buttons."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+pt-core.workspace = true
+tracing.workspace = true
+
+# Windows: XInput, because the default Windows.Gaming.Input backend only
+# reports input to the focused window, and this app reads controllers in the
+# background while a game has focus.
+[target.'cfg(windows)'.dependencies]
+gilrs = { version = "0.11", default-features = false, features = ["xinput"] }
+
+# Linux (and others): gilrs' default backend (evdev; needs libudev).
+[target.'cfg(not(windows))'.dependencies]
+gilrs = "0.11"

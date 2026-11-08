@@ -1,0 +1,100 @@
+# Builds a release when you push a version tag:
+#
+#   git tag v0.1.0
+#   git push origin v0.1.0
+#
+# The tag must match `version` in Cargo.toml. The GitHub Release gets:
+#   Paneltarium-<version>-setup.exe   installer (per-user, no admin; offers
+#                                      "Start Paneltarium when I sign in")
+#   Paneltarium-<version>-portable.zip the three .exe files, no install
+#   SHA256SUMS.txt                     checksums of both
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build (no release is published from a manual run)"
+        required: true
+        default: "0.0.0-test"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows:
+    name: Build Windows release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Work out the version
+        id: version
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "push") {
+            $v = "${{ github.ref_name }}".TrimStart("v")
+            $cargo = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"' | Select-Object -First 1).Matches[0].Groups[1].Value
+            if ($v -ne $cargo) {
+              Write-Error "Tag v$v doesn't match version $cargo in Cargo.toml. Bump Cargo.toml (or re-tag) first."
+              exit 1
+            }
+          } else {
+            $v = "${{ inputs.version }}"
+          }
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Tests
+        run: cargo test --all
+
+      - name: Build
+        run: cargo build --release --locked
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup --no-progress -y
+          }
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ steps.version.outputs.version }}" installer\paneltarium.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Portable zip and checksums
+        shell: pwsh
+        run: |
+          $v = "${{ steps.version.outputs.version }}"
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item "target\installer\Paneltarium-$v-setup.exe" dist\
+          Compress-Archive -Path target\release\paneltarium.exe, target\release\paneltarium-app.exe, target\release\paneltarium-manager.exe, README.md `
+            -DestinationPath "dist\Paneltarium-$v-portable.zip"
+          Get-ChildItem dist | ForEach-Object {
+            "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
+          } | Set-Content dist\SHA256SUMS.txt
+          Get-ChildItem dist
+
+      - name: Keep the files with this run
+        uses: actions/upload-artifact@v4
+        with:
+          name: Paneltarium-${{ steps.version.outputs.version }}
+          path: dist/*
+
+      - name: Publish the GitHub Release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Paneltarium ${{ steps.version.outputs.version }}
+          files: dist/*
+          generate_release_notes: true

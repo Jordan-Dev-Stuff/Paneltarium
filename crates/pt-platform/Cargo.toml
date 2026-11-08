@@ -1,0 +1,20 @@
+[package]
+name = "pt-platform"
+description = "OS-specific implementations of the pt-core traits. Windows today; Linux later."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+pt-core.workspace = true
+raw-window-handle.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+dirs.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
