@@ -2818,7 +2818,7 @@ dependencies = [
 
 [[package]]
 name = "paneltarium"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2836,7 +2836,7 @@ dependencies = [
 
 [[package]]
 name = "paneltarium-app"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ab_glyph",
  "egui-phosphor",
@@ -2861,7 +2861,7 @@ dependencies = [
 
 [[package]]
 name = "paneltarium-manager"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "eframe",
  "egui-phosphor",
@@ -3195,7 +3195,7 @@ checksum = "3d595e54a326bc53c1c197b32d295e14b169e3cfeaa8dc82b529f947fba6bcf5"
 
 [[package]]
 name = "pt-brand"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ab_glyph",
  "egui-phosphor",
@@ -3204,7 +3204,7 @@ dependencies = [
 
 [[package]]
 name = "pt-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "dirs 6.0.0",
  "serde",
@@ -3215,7 +3215,7 @@ dependencies = [
 
 [[package]]
 name = "pt-gamepad"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "pt-core",
  "pt-platform",
@@ -3225,7 +3225,7 @@ dependencies = [
 
 [[package]]
 name = "pt-platform"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "dirs 6.0.0",
  "pt-core",
