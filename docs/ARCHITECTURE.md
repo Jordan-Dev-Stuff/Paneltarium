@@ -25,8 +25,9 @@ pt-platform │ windows/  ccd.rs (all unsafe Win32 calls)             │
             │ unsupported.rs (so everything builds and tests on CI) │
             └───────────────────────────────────────────────────────┘
 
-pt-gamepad  background controller reader (gilrs; XInput on Windows),
-            used by the app (overlay) and the manager (recording).
+pt-gamepad  background controller reader (SDL 3, built from source,
+            controllers only), used by the app (overlay), the manager
+            (recording) and `paneltarium gamepads --watch`.
 pt-brand    the app icon (Phosphor "monitor" + "planet", purple tile), drawn at
             any size: tray, overlay, manager, and assets/paneltarium.ico.
 ```
@@ -64,6 +65,15 @@ pt-brand    the app icon (Phosphor "monitor" + "planet", purple tile), drawn at
 - **Duplicating**: monitors with identical rectangles are a clone group and
   share one Windows source (`display.rs` `shared_source`), whether the
   profile was saved while duplicated or the rescue hotkey made it so.
+- **Controllers via SDL 3**, compiled in statically with only its
+  joystick/HID parts. It reads Xbox (XInput/raw input), PlayStation,
+  Nintendo and Valve controllers directly and keeps working while a game has
+  focus (background events on, Windows.Gaming.Input off). It's kept
+  "listen only" where SDL allows (no PlayStation report-mode switching), and
+  Valve controllers are only opened while Steam runs, because SDL turns off
+  their built-in mouse mode. One press that arrives twice (a controller plus
+  the arrow key Steam generates for it, or Steam's virtual Xbox pad) is
+  dropped by `NavDedupe` in the overlay session.
 - **Accent colour** is a setting (`accent_color = "#7C3AED"`);
   `pt_core::Theme` derives the rest (readable text on it, the dark selected
   tint) so the overlay and manager always agree. The app icon itself stays

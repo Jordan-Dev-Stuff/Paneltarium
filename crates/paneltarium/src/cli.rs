@@ -99,6 +99,11 @@ pub enum Command {
         /// profile) or a profile name.
         #[arg(long, value_name = "none|last|PROFILE")]
         startup: Option<String>,
+        /// After the overlay hotkey: "hold" = stays open while you hold its
+        /// modifier keys (e.g. Ctrl+Alt); "toggle" = stays open until you
+        /// choose or press Esc.
+        #[arg(long, value_name = "hold|toggle")]
+        overlay_mode: Option<String>,
         /// Accent colour of the overlay and profile manager, e.g. "#7C3AED"
         /// (or "default").
         #[arg(long, value_name = "#RRGGBB")]
@@ -109,6 +114,16 @@ pub enum Command {
     Autostart {
         #[arg(value_enum, default_value = "status")]
         action: AutostartAction,
+    },
+
+    /// List connected game controllers. With --watch, also show button
+    /// presses live (Ctrl+C to stop), to check what Paneltarium receives.
+    Gamepads {
+        #[arg(long)]
+        watch: bool,
+        /// Stop watching after this many seconds.
+        #[arg(long, value_name = "SECONDS")]
+        seconds: Option<u64>,
     },
 
     /// Show where profiles and settings are stored.

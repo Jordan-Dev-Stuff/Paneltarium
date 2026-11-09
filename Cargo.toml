@@ -39,6 +39,17 @@ eframe = { version = "0.36", default-features = false, features = ["accesskit", 
 global-hotkey = "0.9"
 notify = "8"
 raw-window-handle = "0.6"
+# SDL 3, compiled from source and linked statically (needs CMake), with only
+# the controller parts: no audio, video, GPU or rendering. "Console build"
+# lets it build on Linux without X11/Wayland headers, which it doesn't need.
+sdl3-sys = { version = "0.7.3", default-features = false, features = [
+    "build-from-source-static",
+    "no-default-subsystems",
+    "sdl-joystick",
+    "sdl-hidapi",
+    "sdl-unix-console-build",
+    "sdl-lean-and-mean",
+] }
 softbuffer = "0.4"
 tracing = "0.1"
 tracing-appender = "0.2"
@@ -56,6 +67,7 @@ windows = { version = "0.62", features = [
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
     "Win32_System_Registry",
+    "Win32_System_Threading",
 ] }
 
 # Dev / test

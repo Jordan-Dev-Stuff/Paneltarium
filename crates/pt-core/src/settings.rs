@@ -37,6 +37,42 @@ pub struct Settings {
     pub startup_profile: StartupProfile,
     /// Accent colour of the overlay and profile manager, `#RRGGBB`.
     pub accent_color: Color,
+    /// How the keyboard-opened overlay stays open.
+    pub overlay_mode: OverlayMode,
+}
+
+/// How the profile overlay stays open after its keyboard hotkey.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OverlayMode {
+    /// Keep holding the hotkey's modifier keys (e.g. Ctrl+Alt); letting go
+    /// cancels. The last key (e.g. D) can be released.
+    #[default]
+    Hold,
+    /// Stays open without holding anything until a profile is chosen, Esc is
+    /// pressed, the hotkey is pressed again, or it times out.
+    Toggle,
+}
+
+impl std::fmt::Display for OverlayMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            OverlayMode::Hold => "hold",
+            OverlayMode::Toggle => "toggle",
+        })
+    }
+}
+
+impl std::str::FromStr for OverlayMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "hold" => Ok(OverlayMode::Hold),
+            "toggle" | "stay" | "stay-open" => Ok(OverlayMode::Toggle),
+            _ => Err(format!("'{s}' isn't an overlay mode; use hold or toggle")),
+        }
+    }
 }
 
 impl Default for Settings {
@@ -49,6 +85,7 @@ impl Default for Settings {
             gamepad_enabled: true,
             startup_profile: StartupProfile::None,
             accent_color: Color::DEFAULT_ACCENT,
+            overlay_mode: OverlayMode::Hold,
         }
     }
 }
@@ -249,6 +286,27 @@ mod tests {
         assert_eq!(Settings::load(&path).unwrap(), green);
         std::fs::write(&path, "accent_color = \"blue-ish\"").unwrap();
         assert!(Settings::load(&path).is_err());
+    }
+
+    #[test]
+    fn overlay_mode_defaults_to_hold_and_round_trips() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.toml");
+        std::fs::write(&path, "gamepad_enabled = true").unwrap();
+        assert_eq!(Settings::load(&path).unwrap().overlay_mode, OverlayMode::Hold);
+        let s = Settings {
+            overlay_mode: OverlayMode::Toggle,
+            ..Settings::default()
+        };
+        s.save(&path).unwrap();
+        assert!(
+            std::fs::read_to_string(&path)
+                .unwrap()
+                .contains("overlay_mode = \"toggle\"")
+        );
+        assert_eq!(Settings::load(&path).unwrap(), s);
+        assert_eq!("Stay-Open".parse::<OverlayMode>().unwrap(), OverlayMode::Toggle);
+        assert!("sometimes".parse::<OverlayMode>().is_err());
     }
 
     #[test]

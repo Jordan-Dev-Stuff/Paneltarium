@@ -198,6 +198,44 @@ impl Session {
     }
 }
 
+/// Where a navigation key came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Source {
+    Keyboard,
+    /// A controller (by its id).
+    Pad(usize),
+}
+
+/// Drops the second copy of one press that arrives twice. Steam turns
+/// controller buttons into keys (D-pad → arrow keys) and can also show a
+/// controller as an extra virtual Xbox pad, so one press of "down" can reach
+/// us from two sources a few milliseconds apart; that must move once.
+#[derive(Debug, Default)]
+pub struct NavDedupe {
+    last: Option<(Source, Input, std::time::Instant)>,
+}
+
+impl NavDedupe {
+    /// Same input from a *different* source within this window = duplicate.
+    pub const WINDOW: std::time::Duration = std::time::Duration::from_millis(150);
+
+    /// Should `input` from `source` at `now` be acted on?
+    pub fn accept(&mut self, source: Source, input: Input, now: std::time::Instant) -> bool {
+        if !matches!(input, Input::Move(_) | Input::Confirm | Input::Cancel) {
+            return true;
+        }
+        if let Some((s, i, t)) = self.last
+            && s != source
+            && i == input
+            && now.duration_since(t) < Self::WINDOW
+        {
+            return false;
+        }
+        self.last = Some((source, input, now));
+        true
+    }
+}
+
 /// Is every modifier in `required` still held?
 pub fn still_held(required: Modifiers, held: Modifiers) -> bool {
     (!required.ctrl || held.ctrl)
@@ -399,5 +437,46 @@ mod tests {
         let no_tracking = Session::new(&profiles(), ctrl_alt(), &Current::Unknown, Opener::Keyboard, false);
         assert!(!no_tracking.closes_on_modifier_release());
         assert!(no_tracking.hint().ends_with("Esc to close"));
+    }
+
+    #[test]
+    fn stay_open_mode_ignores_letting_go() {
+        // "Stay open" is a keyboard session that doesn't track the release.
+        let mut s = Session::new(&profiles(), ctrl_alt(), &cur(Some("TV only")), Opener::Keyboard, false);
+        assert_eq!(s.handle(Input::ModifiersReleased), Decision::KeepOpen);
+        assert_eq!(s.handle(Input::Move(1)), Decision::Redraw);
+        assert_eq!(
+            s.hint(),
+            "Click a profile, press its number, or arrows + Enter · Esc to close"
+        );
+        assert_eq!(s.handle(Input::Digit(9)), Decision::Apply("LG only".into()));
+        assert_eq!(
+            s.handle(Input::Cancel),
+            Decision::Close,
+            "Esc or the hotkey again closes"
+        );
+    }
+
+    #[test]
+    fn one_press_seen_twice_moves_once() {
+        use std::time::{Duration, Instant};
+        let mut d = NavDedupe::default();
+        let t0 = Instant::now();
+        let ms = |n| t0 + Duration::from_millis(n);
+        // Steam: controller D-pad down + the arrow key it generates.
+        assert!(d.accept(Source::Pad(1), Input::Move(1), t0));
+        assert!(!d.accept(Source::Keyboard, Input::Move(1), ms(8)), "duplicate dropped");
+        // The physical pad + Steam's virtual pad, other order.
+        assert!(d.accept(Source::Keyboard, Input::Move(-1), ms(400)));
+        assert!(!d.accept(Source::Pad(7), Input::Move(-1), ms(410)));
+        // Two quick real presses on the same controller both count.
+        assert!(d.accept(Source::Pad(1), Input::Move(1), ms(1000)));
+        assert!(d.accept(Source::Pad(1), Input::Move(1), ms(1050)));
+        // A different input, or the same one after the window, counts.
+        assert!(d.accept(Source::Keyboard, Input::Confirm, ms(1060)));
+        assert!(d.accept(Source::Pad(1), Input::Confirm, ms(1300)));
+        // Digits, clicks etc. are never filtered.
+        assert!(d.accept(Source::Keyboard, Input::Digit(2), ms(1301)));
+        assert!(d.accept(Source::Pad(1), Input::Digit(2), ms(1302)));
     }
 }

@@ -1,7 +1,8 @@
 //! Game-controller input, OS- and library-neutral.
 //!
 //! - [`Button`]: Xbox-style names, with PlayStation/Nintendo-style aliases
-//!   (`R1` = `RB`, `Cross` = `A`, ...).
+//!   (`R1` = `RB`, `Cross` = `A`, ...), plus back paddles (`L4`/`R4`/`L5`/`R5`),
+//!   `Misc` (Share/mic/capture/Quick Access) and `Touchpad`.
 //! - [`GamepadChord`]: a set of buttons held together, e.g. `A+LB+RB+LT+RT`.
 //!   Stored in settings as text.
 //! - [`ChordTracker`]: turns button presses/releases into "chord held" /
@@ -35,6 +36,17 @@ pub enum Button {
     DpadDown,
     DpadLeft,
     DpadRight,
+    /// Extra button: Xbox Series Share, PS5 mic, Switch capture, Steam
+    /// Controller Quick Access (QAM).
+    Misc,
+    /// Back paddles / grip buttons (Xbox Elite, DualSense Edge, Steam
+    /// Controller, Joy-Con SL/SR): upper left and right, lower left and right.
+    L4,
+    R4,
+    L5,
+    R5,
+    /// PlayStation touchpad click.
+    Touchpad,
 }
 
 /// (button, canonical name, aliases)
@@ -56,6 +68,12 @@ const NAMES: &[(Button, &str, &[&str])] = &[
     (Button::DpadDown, "Down", &["DpadDown"]),
     (Button::DpadLeft, "Left", &["DpadLeft"]),
     (Button::DpadRight, "Right", &["DpadRight"]),
+    (Button::Misc, "Misc", &["QAM", "Capture", "Mic"]),
+    (Button::L4, "L4", &["P3", "LeftPaddle1"]),
+    (Button::R4, "R4", &["P1", "RightPaddle1"]),
+    (Button::L5, "L5", &["P4", "LeftPaddle2"]),
+    (Button::R5, "R5", &["P2", "RightPaddle2"]),
+    (Button::Touchpad, "Touchpad", &["Pad", "TouchpadClick"]),
 ];
 
 impl Button {
@@ -242,6 +260,20 @@ mod tests {
         assert_eq!(c.to_string(), "A+LB+RB+LT+RT");
         assert_eq!(c, GamepadChord::default_overlay());
         assert_eq!("Cross+Options".parse::<GamepadChord>().unwrap().to_string(), "A+Start");
+        // Back paddles and extra buttons (Steam Controller, Elite, Edge).
+        assert_eq!("L4+R4".parse::<GamepadChord>().unwrap().to_string(), "L4+R4");
+        assert_eq!("p3+p1+qam".parse::<GamepadChord>().unwrap().to_string(), "Misc+L4+R4");
+        assert_eq!("Touchpad".parse::<Button>(), Ok(Button::Touchpad));
+        for b in [
+            Button::Misc,
+            Button::L4,
+            Button::R4,
+            Button::L5,
+            Button::R5,
+            Button::Touchpad,
+        ] {
+            assert_eq!(b.name().parse::<Button>(), Ok(b), "{b} round-trips");
+        }
         assert!("A".parse::<GamepadChord>().is_err(), "one button is too easy to hit");
         assert!("A+Up".parse::<GamepadChord>().is_err(), "D-pad is for moving");
         assert!("A+Banana".parse::<GamepadChord>().is_err());

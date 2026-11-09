@@ -26,7 +26,7 @@ use std::time::{Duration, Instant};
 
 use global_hotkey::hotkey::{Code, HotKey};
 use pt_core::current::Current;
-use pt_core::{Hotkey, KeyboardState, Modifiers, Profile, Theme};
+use pt_core::{Hotkey, KeyboardState, Modifiers, OverlayMode, Profile, Theme};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
@@ -72,6 +72,8 @@ pub struct Overlay {
     open: Option<Open>,
     /// Accent colour from settings (applies the next time it opens).
     theme: Theme,
+    /// Hold the hotkey's modifiers to keep it open, or not.
+    mode: OverlayMode,
 }
 
 impl Overlay {
@@ -81,7 +83,12 @@ impl Overlay {
             keyboard,
             open: None,
             theme: Theme::default(),
+            mode: OverlayMode::default(),
         }
+    }
+
+    pub fn set_mode(&mut self, mode: OverlayMode) {
+        self.mode = mode;
     }
 
     pub fn set_theme(&mut self, theme: Theme) {
@@ -115,7 +122,9 @@ impl Overlay {
     ) {
         self.close(registry);
         let required = trigger.modifiers;
-        let track_release = self.keyboard.modifiers_held().is_some();
+        // Close when the modifiers are let go only in "hold" mode (and where the
+        // OS lets us see them); otherwise it stays open until a choice or Esc.
+        let track_release = self.mode == OverlayMode::Hold && self.keyboard.modifiers_held().is_some();
         let session = Session::new(profiles, required, current, opener, track_release);
 
         // While open: digits (main row and numpad), arrows, Enter and Esc —

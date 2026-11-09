@@ -13,6 +13,7 @@ path = "src/main.rs"
 [dependencies]
 pt-core.workspace = true
 pt-platform.workspace = true
+pt-gamepad.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 serde.workspace = true

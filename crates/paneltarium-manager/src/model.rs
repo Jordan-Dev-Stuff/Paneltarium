@@ -10,7 +10,8 @@ use std::path::Path;
 
 use pt_core::startup::StartupProfile;
 use pt_core::{
-    Autostart, AutostartStatus, Color, DisplayLayout, Hotkey, Modifiers, MonitorService, Profile, Settings, slots,
+    Autostart, AutostartStatus, Color, DisplayLayout, Hotkey, Modifiers, MonitorService, OverlayMode, Profile,
+    Settings, slots,
 };
 
 pub type Msg = Result<String, String>;
@@ -333,6 +334,21 @@ impl Model {
 
     pub fn last_profile(&self) -> Option<String> {
         self.svc.last_profile()
+    }
+
+    /// How the keyboard-opened overlay stays open.
+    pub fn set_overlay_mode(&mut self, mode: OverlayMode) -> Msg {
+        let mut s = self.settings.clone();
+        s.overlay_mode = mode;
+        let r = self
+            .svc
+            .save_settings(&s)
+            .map(|()| match mode {
+                OverlayMode::Hold => "The overlay now closes when you let go of the hotkey's modifier keys".to_string(),
+                OverlayMode::Toggle => "The overlay now stays open until you choose or press Esc".to_string(),
+            })
+            .map_err(err);
+        self.done(r)
     }
 
     /// Save the accent colour (overlay and this window).
