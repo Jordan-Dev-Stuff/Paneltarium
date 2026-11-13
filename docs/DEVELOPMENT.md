@@ -50,9 +50,21 @@ rustup toolchain install 1.97.0 --component clippy,rustfmt
 ```
 
 The GTK, xdo and appindicator libraries are for the tray icon and global
-hotkeys; `libudev` is for game controllers. On Linux, Paneltarium can't
-switch monitors yet (see the roadmap), but everything else builds and runs,
-and the tests use a fake monitor backend.
+hotkeys; `libudev` is for game controllers. Switching monitors also needs,
+depending on your desktop: nothing extra on GNOME, `kscreen-doctor` on KDE
+Plasma (part of Plasma), `wlr-randr` on Sway/Hyprland and other wlroots
+compositors, `xrandr` in X11 sessions. On GNOME, enable the
+*AppIndicator and KStatusNotifierItem Support* extension to see the tray icon:
+
+```bash
+sudo dnf install gnome-shell-extension-appindicator   # Fedora; preinstalled on Ubuntu
+gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com
+```
+
+On Wayland the first `paneltarium-app` start shows your desktop's
+"keyboard shortcuts" dialog; approve it, or hotkeys won't work. A build run
+from `target/` writes `~/.local/share/applications/io.github.jordan_dev_stuff.Paneltarium.desktop`
+pointing at itself (the shortcut portal needs one); `install.sh` replaces it.
 
 ## 2. Get the code and build
 
@@ -93,7 +105,14 @@ export PANELTARIUM_HOME=$PWD/scratch/config
 A layout file looks like a profile without the name; copy one from
 `%APPDATA%\Paneltarium\profiles\` (or `~/.config/paneltarium/profiles/`)
 and delete its `name` and `hotkey` lines. Add `--debug` to any command
-to print what would be sent to Windows.
+to print what would be sent to Windows (or, on Linux, to the display driver).
+
+### Linux: checking a display driver
+
+```bash
+cargo test -p pt-platform -- --ignored        # GNOME: reads your monitors, verifies (doesn't apply) a few layouts
+PANELTARIUM_DISPLAY_BACKEND=x11 cargo run -p paneltarium -- monitors   # force a driver: gnome | kde | wlroots | x11
+```
 
 ## 4. Check your changes (what CI runs)
 
@@ -113,6 +132,7 @@ workflow files and here, then fix whatever clippy reports.
 | Task | Command |
 |---|---|
 | Regenerate the icon files (`assets/`, `docs/icon-preview.png`) | `cargo run -p pt-brand --example export_icons` |
+| Build the Linux release archive | `cargo build --release` then `installer/linux/package.sh 0.1.0` (→ `target/installer/`) |
 | Build the installer locally (Windows) | `cargo build --release` then `& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DAppVersion=0.1.0 installer\paneltarium.iss` |
 | Publish a release | bump `version` in `Cargo.toml`, commit, `git tag vX.Y.Z`, `git push origin vX.Y.Z` (see the README) |
 | Log file | `%APPDATA%\Paneltarium\logs` (Windows), `~/.config/paneltarium/logs` (Linux) |

@@ -523,8 +523,11 @@ impl ManagerApp {
         ui.add_space(8.0);
         if rows.is_empty() {
             ui.label(
-                RichText::new("No profiles yet. Arrange your monitors in Windows, then click “Save current setup”.")
-                    .color(MUTED),
+                RichText::new(format!(
+                    "No profiles yet. Arrange your monitors in {}, then click “Save current setup”.",
+                    pt_core::text::DISPLAY_SETTINGS
+                ))
+                .color(MUTED),
             );
             return;
         }
@@ -760,11 +763,7 @@ impl ManagerApp {
     }
 
     fn startup_card(&mut self, ui: &mut Ui, acts: &mut Vec<Act>) {
-        const START_LABEL: &str = if cfg!(windows) {
-            "Start with Windows"
-        } else {
-            "Start when I sign in"
-        };
+        const START_LABEL: &str = pt_core::text::START_AT_SIGN_IN;
         match self.model.autostart_status {
             Some(status) => {
                 let mut on = status != AutostartStatus::Off;

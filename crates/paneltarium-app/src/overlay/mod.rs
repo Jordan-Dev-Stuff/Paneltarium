@@ -14,6 +14,12 @@
 //!
 //! The windows never take keyboard focus: digits arrive as temporary global
 //! hotkeys, so whatever app you were using keeps its focus.
+//!
+//! Linux: the windows are X11 override-redirect windows (XWayland on a
+//! Wayland desktop), the only kind that can be placed on a given monitor
+//! and kept above everything without taking focus. On Wayland the keys
+//! come from the desktop's shortcut portal, bound up front
+//! ([`desktop_keys`]), and only with the trigger's modifiers held.
 
 pub mod canvas;
 pub mod render;
@@ -26,7 +32,8 @@ use std::time::{Duration, Instant};
 
 use global_hotkey::hotkey::{Code, HotKey};
 use pt_core::current::Current;
-use pt_core::{Hotkey, KeyboardState, Modifiers, OverlayMode, Profile, Theme};
+use pt_core::hotkey::NamedKey;
+use pt_core::{Hotkey, Key, KeyboardState, Modifiers, OverlayMode, Profile, Theme};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
@@ -132,24 +139,13 @@ impl Overlay {
         let mods = bindings::to_global(&trigger).map(|h| h.mods).unwrap_or_default();
         let mut keys = HashMap::new();
         let mut wanted = Vec::new();
-        let mut add = |code: Code, input: Input| {
+        for (code, input) in key_codes() {
             for m in [Some(mods), None] {
                 let hk = HotKey::new(m, code);
                 keys.insert(hk.id(), input);
                 wanted.push(hk);
             }
-        };
-        for n in 0..=9u8 {
-            add(digit_code(n), Input::Digit(n));
-            add(numpad_code(n), Input::Digit(n));
         }
-        add(Code::ArrowUp, Input::Move(-1));
-        add(Code::ArrowLeft, Input::Move(-1));
-        add(Code::ArrowDown, Input::Move(1));
-        add(Code::ArrowRight, Input::Move(1));
-        add(Code::Enter, Input::Confirm);
-        add(Code::NumpadEnter, Input::Confirm);
-        add(Code::Escape, Input::Cancel);
         let temporary = registry.register_temporary(&wanted);
 
         let hint = session.hint();
@@ -333,6 +329,50 @@ fn round_corners(window: &Window, size: PhysicalSize<u32>, scale: f64) {
     pt_platform::round_window_corners(window, size.width, size.height, radius);
 }
 
+/// Every key the overlay listens to while open, and what it means.
+fn key_codes() -> Vec<(Code, Input)> {
+    let mut out = Vec::new();
+    for n in 0..=9u8 {
+        out.push((digit_code(n), Input::Digit(n)));
+        out.push((numpad_code(n), Input::Digit(n)));
+    }
+    out.extend([
+        (Code::ArrowUp, Input::Move(-1)),
+        (Code::ArrowLeft, Input::Move(-1)),
+        (Code::ArrowDown, Input::Move(1)),
+        (Code::ArrowRight, Input::Move(1)),
+        (Code::Enter, Input::Confirm),
+        (Code::NumpadEnter, Input::Confirm),
+        (Code::Escape, Input::Cancel),
+    ]);
+    out
+}
+
+/// The overlay keys to bind up front where the desktop owns shortcuts
+/// (Wayland): the trigger's modifiers with the main-row digits, ↑/↓, Enter
+/// and Esc. Left/right and the numpad are left out to keep the list the
+/// desktop shows short (and GNOME uses Ctrl+Alt+←/→ for workspaces).
+pub fn desktop_keys(trigger: Hotkey) -> Vec<(Hotkey, String)> {
+    let with = |key| Hotkey::new(trigger.modifiers, key);
+    let mut out: Vec<(Hotkey, String)> = (0..=9u8)
+        .map(|n| {
+            let what = if n == 0 {
+                "duplicate".to_string()
+            } else {
+                format!("profile {n}")
+            };
+            (with(Key::Digit(n)), format!("Profile list: {what}"))
+        })
+        .collect();
+    out.extend([
+        (with(Key::Named(NamedKey::Up)), "Profile list: previous".into()),
+        (with(Key::Named(NamedKey::Down)), "Profile list: next".into()),
+        (with(Key::Named(NamedKey::Enter)), "Profile list: choose".into()),
+        (with(Key::Named(NamedKey::Escape)), "Profile list: close".into()),
+    ]);
+    out
+}
+
 /// Window-creation options only winit's Windows backend has: a shadow, no
 /// taskbar button, and no drag-and-drop (which would initialise COM in a way
 /// that can clash with other libraries on this thread).
@@ -345,7 +385,19 @@ fn platform_attributes(attrs: WindowAttributes) -> WindowAttributes {
         .with_undecorated_shadow(true)
 }
 
-#[cfg(not(windows))]
+/// Linux: an X11 override-redirect window is placed exactly where asked,
+/// stays above other windows, has no taskbar entry and is never focused by
+/// the window manager. (Plain Wayland windows can do none of that; the app
+/// runs its windows through XWayland when it's there, see `main.rs`.)
+#[cfg(target_os = "linux")]
+fn platform_attributes(attrs: WindowAttributes) -> WindowAttributes {
+    use winit::platform::x11::{WindowAttributesExtX11, WindowType};
+    attrs
+        .with_override_redirect(true)
+        .with_x11_window_type(vec![WindowType::Notification])
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 fn platform_attributes(attrs: WindowAttributes) -> WindowAttributes {
     attrs
 }

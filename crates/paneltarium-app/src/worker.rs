@@ -125,7 +125,12 @@ pub fn run_sign_in(svc: &MonitorService, tries: u32, delay: Duration) -> Outcome
     };
     let name = match svc.startup_target() {
         Ok(Some(n)) => n,
-        Ok(None) => return done(true, "Sign-in: leaving the monitors as Windows set them up".into()),
+        Ok(None) => {
+            return done(
+                true,
+                format!("Sign-in: leaving the monitors as {} set them up", pt_core::text::SYSTEM),
+            );
+        }
         Err(e) => return done(false, format!("Sign-in: {e}")),
     };
     for attempt in 1..=tries {

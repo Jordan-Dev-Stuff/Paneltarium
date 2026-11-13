@@ -277,13 +277,14 @@ fn run(cli: Cli) -> Result<()> {
                 AutostartStatus::On => println!("Start at sign-in: on"),
                 AutostartStatus::Off => println!("Start at sign-in: off"),
                 AutostartStatus::DisabledInSystem => println!(
-                    "Start at sign-in: off (switched off in Task Manager → Startup apps; `autostart on` re-enables it)"
+                    "Start at sign-in: off (switched off in {}; `autostart on` re-enables it)",
+                    pt_core::text::STARTUP_SETTINGS
                 ),
             }
             println!(
                 "At sign-in: {}",
                 match &s.startup_profile {
-                    StartupProfile::None => "leave the monitors as Windows set them up".to_string(),
+                    StartupProfile::None => format!("leave the monitors as {} set them up", pt_core::text::SYSTEM),
                     StartupProfile::Last => format!(
                         "load the last used profile (now: {})",
                         svc.last_profile().unwrap_or_else(|| "none yet".into())

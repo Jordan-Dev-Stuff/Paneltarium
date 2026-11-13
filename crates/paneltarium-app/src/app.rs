@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use pt_core::current::{self, Current};
 use pt_core::gamepad::{Button, ChordEvent, ChordTracker};
-use pt_core::{AppPaths, Autostart, AutostartStatus, DisplayBackend, Hotkey, ProfileStore, Settings};
+use pt_core::{AppPaths, Autostart, AutostartStatus, DisplayBackend, Hotkey, ProfileStore, Settings, ShortcutEvent};
 use pt_gamepad::{GamepadWatcher, PadEvent};
 use tray_icon::menu::MenuEvent;
 use winit::application::ApplicationHandler;
@@ -18,8 +18,8 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoopProxy};
 use winit::window::WindowId;
 
 use crate::bindings::{self, Action, HotkeyRegistry, RepeatFilter};
-use crate::overlay::Overlay;
 use crate::overlay::session::{Decision, Input, NavDedupe, Opener, Source};
+use crate::overlay::{self, Overlay};
 use crate::tray::{self, Status, Tray};
 use crate::watcher::{self, ConfigWatcher};
 use crate::worker::{Job, Outcome, Worker};
@@ -31,6 +31,8 @@ pub enum UserEvent {
     /// A game-controller button went down or up.
     Pad(PadEvent),
     Menu(MenuEvent),
+    /// From the desktop's shortcut service (Wayland).
+    Shortcut(ShortcutEvent),
     ConfigChanged,
     JobDone(Outcome),
 }
@@ -76,12 +78,38 @@ pub struct App {
     gamepad: GamepadWatcher,
     /// Per-controller chord state.
     pads: HashMap<usize, ChordTracker>,
+    /// Why hotkeys may not work (e.g. the desktop refused the shortcuts).
+    hotkey_problem: Option<String>,
     _watcher: Option<ConfigWatcher>,
 }
 
 impl App {
     pub fn new(paths: AppPaths, proxy: &EventLoopProxy<UserEvent>, at_sign_in: bool) -> Result<Self, String> {
-        let hotkeys = HotkeyRegistry::new()?;
+        // Wayland: the desktop delivers the hotkeys; elsewhere we grab them.
+        let (desktop, mut hotkey_problem) = match pt_platform::shortcut_service(poster(proxy, UserEvent::Shortcut)) {
+            Ok(service) => (service, None),
+            Err(e) => {
+                tracing::warn!("global shortcuts portal: {e}");
+                (
+                    None,
+                    Some(
+                        "hotkeys only work in X11 apps: this desktop has no global-shortcuts portal \
+                         (GNOME 48+, KDE Plasma 5.27+ and Hyprland have one)"
+                            .to_string(),
+                    ),
+                )
+            }
+        };
+        let hotkeys = match HotkeyRegistry::new(desktop) {
+            Ok(h) => h,
+            // No X server either (e.g. Wayland without XWayland): carry on
+            // with the tray and controllers.
+            Err(e) if hotkey_problem.is_some() => {
+                hotkey_problem = Some(format!("no hotkeys on this desktop ({e})"));
+                HotkeyRegistry::disabled()
+            }
+            Err(e) => return Err(e),
+        };
         let worker = Worker::spawn(paths.clone(), poster(proxy, UserEvent::JobDone));
         let changed = poster(proxy, |()| UserEvent::ConfigChanged);
         let watcher = watcher::watch(paths.root(), move || changed(()))
@@ -119,6 +147,7 @@ impl App {
             // Started switched off; `reload` switches it on if enabled.
             gamepad: GamepadWatcher::spawn(false, poster(proxy, UserEvent::Pad)),
             pads: HashMap::new(),
+            hotkey_problem,
             _watcher: watcher,
         })
     }
@@ -155,7 +184,9 @@ impl App {
         self.overlay.close(&mut self.hotkeys);
         let (bindings, clashes) = bindings::build(&settings, &profiles);
         warnings.extend(clashes);
-        warnings.extend(self.hotkeys.replace(&bindings));
+        let overlay_keys = settings.overlay_hotkey.map(overlay::desktop_keys).unwrap_or_default();
+        warnings.extend(self.hotkeys.replace(&bindings, &overlay_keys));
+        warnings.extend(self.hotkey_problem.clone());
         tracing::info!(
             "loaded {} profile(s), {} hotkey(s), {} warning(s)",
             profiles.len(),
@@ -250,6 +281,38 @@ impl App {
         }
     }
 
+    fn on_shortcut(&mut self, event_loop: &ActiveEventLoop, event: ShortcutEvent) {
+        let hotkey = |id: String, state| id.parse().ok().map(|id| GlobalHotKeyEvent { id, state });
+        match event {
+            ShortcutEvent::Pressed(id) => {
+                if let Some(e) = hotkey(id, HotKeyState::Pressed) {
+                    self.on_hotkey(event_loop, e);
+                }
+            }
+            ShortcutEvent::Released(id) => {
+                if let Some(e) = hotkey(id, HotKeyState::Released) {
+                    self.on_hotkey(event_loop, e);
+                }
+            }
+            ShortcutEvent::Bound(n) => {
+                tracing::info!("the desktop bound {n} shortcut(s)");
+                if let Some(old) = self.hotkey_problem.take() {
+                    self.status.warnings.retain(|w| *w != old);
+                    self.refresh_tray();
+                }
+            }
+            ShortcutEvent::Failed(e) => {
+                tracing::warn!("global shortcuts: {e}");
+                let problem = format!("hotkeys: {e}");
+                if let Some(old) = self.hotkey_problem.replace(problem.clone()) {
+                    self.status.warnings.retain(|w| *w != old);
+                }
+                self.status.warnings.push(problem);
+                self.refresh_tray();
+            }
+        }
+    }
+
     fn toggle_autostart(&mut self) {
         let Some(a) = &self.autostart else { return };
         let result = match a.status() {
@@ -265,7 +328,7 @@ impl App {
         };
         match result {
             Ok(()) => tracing::info!("start at sign-in: {:?}", a.status()),
-            Err(e) => self.status.last = Some((false, format!("Start with Windows: {e}"))),
+            Err(e) => self.status.last = Some((false, format!("{}: {e}", pt_core::text::START_AT_SIGN_IN))),
         }
         self.status.autostart = a.status().ok();
         self.refresh_tray();
@@ -339,9 +402,14 @@ impl ApplicationHandler<UserEvent> for App {
         // Called once at start-up on desktop platforms. The tray must be
         // created after the event loop is running.
         if self.tray.is_none() {
-            match Tray::new(&self.status) {
+            match pt_platform::tray_support().and_then(|()| Tray::new(&self.status)) {
                 Ok(t) => self.tray = Some(t),
                 Err(e) => tracing::error!("{e}"),
+            }
+            // Created, but maybe shown nowhere (it appears by itself once a
+            // tray area does).
+            if let Some(hint) = pt_platform::tray_hint() {
+                tracing::warn!("{hint}");
             }
             self.reload();
             if self.at_sign_in {
@@ -354,6 +422,7 @@ impl ApplicationHandler<UserEvent> for App {
         match event {
             UserEvent::Hotkey(e) => self.on_hotkey(event_loop, e),
             UserEvent::Pad(e) => self.on_pad(event_loop, e),
+            UserEvent::Shortcut(e) => self.on_shortcut(event_loop, e),
             UserEvent::ConfigChanged => self.reload(),
             UserEvent::JobDone(outcome) => {
                 self.status.last = Some((outcome.ok, outcome.message));
@@ -385,12 +454,6 @@ impl ApplicationHandler<UserEvent> for App {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        // Linux: let GTK (the tray menu) handle its pending events.
-        #[cfg(target_os = "linux")]
-        while gtk::events_pending() {
-            gtk::main_iteration_do(false);
-        }
-
         // While the overlay is open, wake up regularly to notice when the
         // modifier keys are released; otherwise sleep until the next event.
         self.overlay.poll(&mut self.hotkeys);

@@ -27,8 +27,8 @@ tracing-subscriber.workspace = true
 tray-icon.workspace = true
 winit.workspace = true
 
-# Linux: the tray icon is a GTK widget, so GTK must be initialised and its
-# events pumped (same version tray-icon uses).
+# Linux: the tray icon is a GTK widget; it runs on its own thread with
+# GTK's main loop (same version tray-icon uses). See tray.rs.
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
 

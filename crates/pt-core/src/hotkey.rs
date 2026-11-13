@@ -63,6 +63,8 @@ pub enum NamedKey {
     Backquote,
     BracketLeft,
     BracketRight,
+    Enter,
+    Escape,
 }
 
 /// (canonical name, accepted aliases, W3C code name)
@@ -89,6 +91,8 @@ const NAMED_KEYS: &[(NamedKey, &str, &[&str], &str)] = &[
     (NamedKey::Backquote, "Backquote", &["`", "grave"], "Backquote"),
     (NamedKey::BracketLeft, "BracketLeft", &["["], "BracketLeft"),
     (NamedKey::BracketRight, "BracketRight", &["]"], "BracketRight"),
+    (NamedKey::Enter, "Enter", &["return"], "Enter"),
+    (NamedKey::Escape, "Escape", &["esc"], "Escape"),
 ];
 
 fn named_entry(k: NamedKey) -> &'static (NamedKey, &'static str, &'static [&'static str], &'static str) {

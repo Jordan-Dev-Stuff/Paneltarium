@@ -7,7 +7,7 @@
 use std::path::Path;
 
 use crate::error::Result;
-use crate::hotkey::Modifiers;
+use crate::hotkey::{Hotkey, Modifiers};
 use crate::model::{DisplayLayout, DisplayMode, MonitorId, Topology};
 use crate::plan::ApplyPlan;
 
@@ -61,4 +61,34 @@ pub trait Autostart: Send + Sync {
     fn migrate_legacy(&self, _exe: &Path) -> Result<bool> {
         Ok(false)
     }
+}
+
+/// A global shortcut for the desktop to deliver (see [`ShortcutService`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Shortcut {
+    /// Stable id, reported back in [`ShortcutEvent`]s.
+    pub id: String,
+    /// Shown to the user by the desktop (e.g. in its shortcut settings).
+    pub description: String,
+    pub hotkey: Hotkey,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ShortcutEvent {
+    Pressed(String),
+    Released(String),
+    /// A new set of shortcuts is active: how many the desktop accepted.
+    Bound(usize),
+    /// The desktop refused or failed to bind them.
+    Failed(String),
+}
+
+/// Global shortcuts owned by the desktop rather than grabbed by the app:
+/// on Wayland, apps can't watch the keyboard, so they ask the desktop
+/// (the XDG GlobalShortcuts portal) to tell them when a combination is
+/// pressed. The desktop may ask the user to approve them.
+pub trait ShortcutService: Send {
+    /// Replace the bound shortcuts. Works in the background; the outcome
+    /// arrives as a [`ShortcutEvent::Bound`] or [`ShortcutEvent::Failed`].
+    fn bind(&self, shortcuts: Vec<Shortcut>);
 }

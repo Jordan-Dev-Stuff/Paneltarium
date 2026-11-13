@@ -50,13 +50,16 @@ fn run(paths: AppPaths) -> Result<(), String> {
     };
     tracing::info!("starting, config in {}", paths.root().display());
 
-    // Linux: tray-icon's menu is GTK, which must be initialised first.
+    let mut builder = EventLoop::<UserEvent>::with_user_event();
+    // Linux: open the overlay's windows through X11 (XWayland on a Wayland
+    // desktop) when it's there: Wayland doesn't let apps place a window on
+    // a given monitor or keep it on top (see `overlay::platform_attributes`).
     #[cfg(target_os = "linux")]
-    gtk::init().map_err(|e| format!("GTK: {e}"))?;
-
-    let event_loop = EventLoop::<UserEvent>::with_user_event()
-        .build()
-        .map_err(|e| format!("event loop: {e}"))?;
+    if std::env::var_os("DISPLAY").is_some_and(|d| !d.is_empty()) {
+        use winit::platform::x11::EventLoopBuilderExtX11;
+        builder.with_x11();
+    }
+    let event_loop = builder.build().map_err(|e| format!("event loop: {e}"))?;
     event_loop.set_control_flow(ControlFlow::Wait);
     let proxy = event_loop.create_proxy();
 

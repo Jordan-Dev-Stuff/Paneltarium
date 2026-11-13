@@ -3,7 +3,8 @@
 # Paneltarium
 
 **Switch between your monitor setups with one key, or from your game
-controller.** A lightweight, fast Windows tray app written in Rust.
+controller.** A lightweight, fast tray app for Windows and Linux, written
+in Rust.
 
 Paneltarium doesn't replace Windows' display settings. You still arrange
 your monitors the usual way, in **Settings → System → Display** (or your
@@ -57,6 +58,37 @@ in*). Then:
 
 That's it. Lost a screen and can't see anything? **Ctrl+Alt+Shift+D** shows
 the same picture on every monitor.
+
+### On Linux
+
+Download `Paneltarium-<version>-linux-x86_64.tar.gz` from the Releases page,
+unpack it and run `./install.sh` (installs for you only, into `~/.local`;
+`./install.sh --uninstall` removes it). Then start **Paneltarium** from your
+app menu. It works on:
+
+| Desktop | Needs |
+|---|---|
+| GNOME (Fedora, Ubuntu, …), Wayland or X11 | nothing extra; for the tray icon, the *AppIndicator and KStatusNotifierItem Support* extension (preinstalled on Ubuntu) |
+| KDE Plasma (Wayland) | `kscreen-doctor` (comes with Plasma) |
+| Sway, Hyprland, river, labwc, Wayfire… | `wlr-randr` |
+| X11 sessions: Xfce, MATE, Cinnamon, i3, Plasma on X11… | `xrandr` |
+
+Plus GTK 3 and `libayatana-appindicator3` for the tray icon (on most
+desktops already there). Arrange your monitors in your desktop's display
+settings, then save profiles as above.
+
+On Wayland:
+
+- **Approve the shortcuts.** The first time Paneltarium starts, your desktop
+  asks you to allow its keyboard shortcuts; you can change them later in its
+  keyboard settings. This needs GNOME 48+, KDE Plasma 5.27+ or Hyprland.
+- **The profile list stays open after you let go.** Wayland doesn't let
+  apps see the keyboard, so pick with Ctrl+Alt+number (or click), or close
+  it with Ctrl+Alt+Esc / Ctrl+Alt+D.
+- **On GNOME, a profile lasts until monitors are plugged in or out.** Then
+  GNOME goes back to its own saved arrangement; press the profile's hotkey
+  again. (Paneltarium switches without GNOME's "Keep these settings?"
+  countdown, which would undo a switch made from the couch.)
 
 ## Everyday use
 
@@ -197,7 +229,9 @@ these to a new GitHub Release:
   Paneltarium when I sign in*, adds Start-menu shortcuts and closes a running
   copy when upgrading.
 - `Paneltarium-0.2.0-portable.zip`: the programs on their own.
-- `SHA256SUMS.txt`: checksums for both.
+- `Paneltarium-0.2.0-linux-x86_64.tar.gz`: the Linux programs, menu entries
+  and `install.sh`.
+- `SHA256SUMS.txt`: checksums for all of them.
 
 Uninstalling keeps your profiles. Every push and pull request also runs
 `.github/workflows/ci.yml` (formatting, lints and tests on Windows and
@@ -213,14 +247,14 @@ cargo build --release
 ```
 crates/
   pt-core/              OS-neutral: model, profiles, hotkeys, matching, theme, traits, mock
-  pt-platform/          OS-specific code (src/windows/ today)
+  pt-platform/          OS-specific code: src/windows/ and src/linux/ (GNOME, KDE, wlroots, X11)
   pt-gamepad/           reads game controllers on a background thread (SDL 3)
   pt-brand/             the app icon (planet in a display), drawn at any size
   paneltarium/          command line
   paneltarium-app/      tray app: hotkeys, profile overlay, tray icon
   paneltarium-manager/  profile manager window (egui)
 assets/                 paneltarium.ico (embedded in the .exe files) and a 256 px PNG
-installer/              Inno Setup script for the Windows installer
+installer/              Inno Setup script for Windows; linux/ archive, install.sh and menu entries
 .github/workflows/      ci.yml (every push) and release.yml (version tags)
 docs/
   ARCHITECTURE.md       how the pieces fit, key decisions
@@ -231,7 +265,7 @@ docs/
 ### Tests
 
 ```powershell
-cargo test            # 167 tests on Windows (161 elsewhere), no real monitors needed
+cargo test            # 223 tests on Linux (169 on Windows), no real monitors needed
 cargo clippy --all-targets
 ```
 

@@ -19,7 +19,7 @@ Each step ends in something you can run and check before moving on.
 | 9c | Controllers via SDL 3 (PlayStation, Switch, Steam Controller) | ✅ written — **verify with your controllers** |
 | 10 | CLI ↔ running app (IPC) | ⏭ next (or 11 first) |
 | 11 | Installer + release CI | ✅ written, linted — **verify with your first tag** |
-| 12 | Linux backend (future) | |
+| 12 | Linux: GNOME, KDE, wlroots, X11; Wayland hotkeys; release archive | ✅ GNOME on Wayland verified on real hardware (Fedora 45, GNOME 51); KDE, wlroots and X11 tested against recorded tool output — **verify on those desktops** |
 | 13 | Accent colour from the OS (Windows, GNOME, KDE, …) | planned |
 | 14 | HDR in profiles: save, show and apply it per monitor | planned |
 
@@ -435,14 +435,102 @@ standard approach is a per-user app started at sign-in.
 5. `git tag v0.1.0 && git push origin v0.1.0` → a Release appears with the
    three files.
 
-## 12. Linux (future)
+## 12. Linux ✅ (GNOME verified; verify KDE, wlroots, X11)
 
-- `pt-platform/src/linux/`: one backend per display stack —
-  X11 (RandR), wlroots compositors (`wlr-output-management`), KDE (`kscreen-doctor`/D-Bus),
-  GNOME (`org.gnome.Mutter.DisplayConfig` D-Bus).
-- `tray-icon` works on Linux (needs GTK); `global-hotkey` works on X11, while
-  Wayland needs the GlobalShortcuts portal.
-- Autostart: `~/.config/autostart/paneltarium.desktop`.
+Verified 2026-11-13 on Fedora 45, GNOME 51 (Wayland), laptop panel: reading
+monitors (EDID from the kernel), dry runs, switching 60 → 48 → 60 Hz from the
+CLI, the overlay hotkey, picking a profile in the overlay, direct profile
+hotkeys.
+
+**Display switching** (`pt-platform/src/linux/`): Linux has no single display
+API, so one shared backend (`outputs.rs`: modes, scales, duplicate groups,
+pixel ↔ logical coordinates, all unit-tested) sits on a small driver per
+display stack, chosen at start-up:
+
+| Desktop | Driver | Reads / applies with |
+|---|---|---|
+| GNOME (Wayland and X11) | `mutter.rs` | `org.gnome.Mutter.DisplayConfig` D-Bus, the API GNOME Settings uses |
+| KDE Plasma on Wayland | `kscreen.rs` | `kscreen-doctor --json` / `kscreen-doctor output.…` |
+| Sway, Hyprland, river, labwc, Wayfire… | `wlroots.rs` | `wlr-randr --json` / `wlr-randr --output …` |
+| Any X11 session | `xrandr.rs` | `xrandr --verbose` / `xrandr --output …` (`--dryrun` for dry runs) |
+
+`PANELTARIUM_DISPLAY_BACKEND=gnome|kde|wlroots|x11` overrides the choice.
+
+- **Monitor ids**: connector + EDID (`DP-1:DELA0B1:<serial>`), with the EDID
+  read from `/sys/class/drm/card*-<connector>/edid`, so every driver identifies
+  a monitor the same way and profiles follow a monitor to another port.
+- **Scaling**: Wayland compositors place monitors in *logical* (scaled)
+  units. Profiles keep pixels like on Windows; `coords.rs` converts monitor by
+  monitor, keeping what touches what and which edges line up, so mixed
+  scales (a 200 % 4K next to a 100 % laptop) round-trip. Each monitor keeps
+  its current scale when its new mode allows it.
+- **GNOME**: profiles are applied as *temporary* configurations. A
+  *persistent* one makes GNOME ask "Keep these display settings?" and undo
+  it after 20 s — unusable from a hotkey or a controller. GNOME returns to
+  its own saved arrangement when a monitor is plugged in or out.
+- No usable driver isn't fatal: the manager and CLI still open and every
+  monitor call says what to install.
+
+**Hotkeys on Wayland**: apps can't grab keys there, so the app asks the
+desktop through the XDG GlobalShortcuts portal (GNOME 48+, KDE Plasma 5.27+,
+Hyprland). The desktop asks you to approve the list the first time, and its
+keyboard settings can change them. The portal can't add keys just while the
+overlay is open, so the overlay's keys (overlay modifiers + 0–9, ↑, ↓, Enter,
+Esc) are bound up front with the rest. The portal needs an installed
+`.desktop` file for the app id: the install script installs one, and a copy
+run from a build folder writes `~/.local/share/applications/<app id>.desktop`
+pointing at itself. X11 sessions keep using `global-hotkey`.
+
+**Overlay**: drawn in X11 *override-redirect* windows (through XWayland on a
+Wayland desktop): the only kind that can be put on a given monitor and kept
+above other windows without taking focus. Rounded corners via the X SHAPE
+extension. On X11 sessions, letting go of Ctrl+Alt is detected
+(`XQueryKeymap`); on Wayland nobody can see the keyboard, so there it stays
+open until you pick, press Esc (with the modifiers held), Ctrl+Alt+D again,
+or 15 s pass.
+
+**Tray**: needs `libayatana-appindicator3` (checked before creating it, so a
+missing library logs a hint instead of crashing) and a tray area; on GNOME
+that's the "AppIndicator and KStatusNotifierItem Support" extension (logged
+when missing). Like the desktop's own panel icons it's one colour on Linux
+(`pt_brand::symbolic_rgba`): white on GNOME (its top bar is always dark),
+elsewhere white or black following the XDG `color-scheme` preference.
+Windows keeps the colourful icon.
+
+**Other fixes found on the way:** SDL installed its own SIGINT/SIGTERM
+handlers, so `kill`, Ctrl+C on `gamepads --watch` and logging out couldn't stop
+the programs (now off). The tray's GTK events were only handled when
+something else woke the app, so an idle app never noticed GNOME's tray
+extension being switched on (and could be slow to open its menu); the tray
+now runs on its own GTK thread. UI text says "Start when I sign in" / "your desktop"
+instead of Windows terms (`pt_core::text`).
+
+**Release:** `installer/linux/package.sh` builds
+`Paneltarium-<version>-linux-x86_64.tar.gz` (programs, menu entries, icon,
+`install.sh`); the release workflow builds it on Debian 12 (glibc 2.36) so it
+runs on Debian 12+, Ubuntu 24.04+, Fedora, Arch, openSUSE Tumbleweed and
+similar. `install.sh` installs to `~/.local` (no root), `--uninstall` removes
+it, `PREFIX=/usr/local` installs for everyone.
+
+**Check:**
+1. On GNOME: `cargo test -p pt-platform -- --ignored` (reads your monitors,
+   asks Mutter to verify — not apply — the current layout, duplicate and
+   extend).
+2. `paneltarium monitors`, `paneltarium save Desk`, `paneltarium apply Desk
+   --dry-run`, then change something in Settings → Displays and `paneltarium
+   apply Desk`.
+3. Start `paneltarium-app`: approve the shortcuts GNOME/KDE asks about;
+   Ctrl+Alt+D shows the overlay on every monitor; Ctrl+Alt+2 inside it
+   applies profile 2; Ctrl+Alt+Esc closes it.
+4. With two monitors: a profile with one at 200 % next to one at 100 %
+   round-trips (save, change, apply → same arrangement in Settings).
+5. KDE Plasma (Wayland), Sway/Hyprland (`wlr-randr` installed) and an X11
+   session (Xfce, i3…): steps 2 and 3. If an apply fails, run it with
+   `--debug` and compare with `kscreen-doctor --json` / `wlr-randr --json` /
+   `xrandr --verbose`.
+6. Release archive: `cargo build --release && installer/linux/package.sh
+   0.0.0-test`, unpack, `./install.sh`: "Paneltarium" and "Paneltarium
+   Profiles" appear in the app menu; `./install.sh --uninstall` removes them.
 
 ## 13. Accent colour from the OS (planned)
 

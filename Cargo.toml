@@ -56,6 +56,12 @@ tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tray-icon = "0.26"
 winresource = { version = "0.1", default-features = false }
+
+# Linux-only (used by pt-platform's linux module): D-Bus for GNOME's display
+# settings and the global-shortcuts portal, and X11 (pure Rust, no libX11).
+libloading = "0.8"
+x11rb = { version = "0.13", features = ["shape"] }
+zbus = "5"
 winit = "0.30"
 
 # Windows-only bindings (used by pt-platform's windows module)

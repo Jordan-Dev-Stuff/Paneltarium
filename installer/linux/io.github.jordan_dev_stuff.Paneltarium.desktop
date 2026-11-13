@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Paneltarium
+GenericName=Monitor profiles
+Comment=Switch monitor profiles with a hotkey or a game controller
+Exec="@BINDIR@/paneltarium-app"
+Icon=io.github.jordan_dev_stuff.Paneltarium
+Terminal=false
+Categories=Utility;Settings;HardwareSettings;
+Keywords=monitor;display;screen;profile;hotkey;
