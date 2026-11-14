@@ -15,6 +15,7 @@
 //! - [`backend`]: the traits each OS implements (see the `pt-platform` crate)
 //! - [`service`]: the facade the CLI, tray and hotkeys all use
 //! - [`mock`]: a fake backend for tests
+//! - [`text`]: wording that differs between Windows and Linux
 
 pub mod backend;
 pub mod current;
@@ -32,9 +33,12 @@ pub mod settings;
 pub mod slots;
 pub mod startup;
 pub mod testing;
+pub mod text;
 pub mod theme;
 
-pub use backend::{AUTOSTART_ARG, Autostart, AutostartStatus, DisplayBackend, KeyboardState};
+pub use backend::{
+    AUTOSTART_ARG, Autostart, AutostartStatus, DisplayBackend, KeyboardState, Shortcut, ShortcutEvent, ShortcutService,
+};
 pub use error::{Error, Result};
 pub use hotkey::{Hotkey, Key, Modifiers};
 pub use model::{DisplayLayout, DisplayMode, MonitorId, MonitorState, Position, RefreshRate, Rotation, Topology};

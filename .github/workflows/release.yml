@@ -4,10 +4,13 @@
 #   git push origin v0.1.0
 #
 # The tag must match `version` in Cargo.toml. The GitHub Release gets:
-#   Paneltarium-<version>-setup.exe   installer (per-user, no admin; offers
-#                                      "Start Paneltarium when I sign in")
-#   Paneltarium-<version>-portable.zip the three .exe files, no install
-#   SHA256SUMS.txt                     checksums of both
+#   Paneltarium-<version>-setup.exe              Windows installer (per-user, no
+#                                                admin; offers "Start Paneltarium
+#                                                when I sign in")
+#   Paneltarium-<version>-portable.zip           the three .exe files, no install
+#   Paneltarium-<version>-linux-x86_64.tar.gz    Linux programs, menu entries,
+#                                                icon and install.sh (per-user)
+#   SHA256SUMS.txt                               checksums of all of them
 name: Release
 
 on:
@@ -27,8 +30,31 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  version:
+    name: Work out the version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            v="${GITHUB_REF_NAME#v}"
+            cargo=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+            if [ "$v" != "$cargo" ]; then
+              echo "::error::Tag v$v doesn't match version $cargo in Cargo.toml. Bump Cargo.toml (or re-tag) first."
+              exit 1
+            fi
+          else
+            v="${{ inputs.version }}"
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
   windows:
     name: Build Windows release
+    needs: version
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,22 +65,6 @@ jobs:
           toolchain: "1.97.0"
 
       - uses: Swatinem/rust-cache@v2
-
-      - name: Work out the version
-        id: version
-        shell: pwsh
-        run: |
-          if ("${{ github.event_name }}" -eq "push") {
-            $v = "${{ github.ref_name }}".TrimStart("v")
-            $cargo = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"' | Select-Object -First 1).Matches[0].Groups[1].Value
-            if ($v -ne $cargo) {
-              Write-Error "Tag v$v doesn't match version $cargo in Cargo.toml. Bump Cargo.toml (or re-tag) first."
-              exit 1
-            }
-          } else {
-            $v = "${{ inputs.version }}"
-          }
-          "version=$v" >> $env:GITHUB_OUTPUT
 
       - name: Tests
         run: cargo test --all
@@ -72,32 +82,92 @@ jobs:
       - name: Build installer
         shell: pwsh
         run: |
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ steps.version.outputs.version }}" installer\paneltarium.iss
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ needs.version.outputs.version }}" installer\paneltarium.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Portable zip and checksums
+      - name: Portable zip
         shell: pwsh
         run: |
-          $v = "${{ steps.version.outputs.version }}"
+          $v = "${{ needs.version.outputs.version }}"
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item "target\installer\Paneltarium-$v-setup.exe" dist\
           Compress-Archive -Path target\release\paneltarium.exe, target\release\paneltarium-app.exe, target\release\paneltarium-manager.exe, README.md, LICENSE `
             -DestinationPath "dist\Paneltarium-$v-portable.zip"
-          Get-ChildItem dist | ForEach-Object {
-            "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
-          } | Set-Content dist\SHA256SUMS.txt
           Get-ChildItem dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*
+
+  linux:
+    name: Build Linux release
+    needs: version
+    runs-on: ubuntu-latest
+    # Built on Debian 12 (glibc 2.36) so the programs also run on older
+    # distributions than the runner's: Debian 12+, Ubuntu 24.04+, current
+    # Fedora, Arch, openSUSE Tumbleweed, ...
+    container: debian:bookworm
+    steps:
+      - name: Build tools and libraries
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl git build-essential cmake pkg-config \
+            libgtk-3-dev libxdo-dev libayatana-appindicator3-dev libudev-dev
+
+      - uses: actions/checkout@v4
+
+      # Same pinned version as ci.yml.
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97.0"
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Tests
+        run: cargo test --all
+
+      - name: Build
+        run: cargo build --release --locked
+
+      - name: Archive
+        run: |
+          installer/linux/package.sh "${{ needs.version.outputs.version }}"
+          mkdir -p dist
+          cp target/installer/*.tar.gz dist/
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*
+
+  publish:
+    name: Checksums and GitHub Release
+    needs: [version, windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
 
       - name: Keep the files with this run
         uses: actions/upload-artifact@v4
         with:
-          name: Paneltarium-${{ steps.version.outputs.version }}
+          name: Paneltarium-${{ needs.version.outputs.version }}
           path: dist/*
 
       - name: Publish the GitHub Release
         if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
-          name: Paneltarium ${{ steps.version.outputs.version }}
+          name: Paneltarium ${{ needs.version.outputs.version }}
           files: dist/*
           generate_release_notes: true

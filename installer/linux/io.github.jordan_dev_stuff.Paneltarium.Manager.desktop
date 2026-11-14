@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Paneltarium Profiles
+GenericName=Monitor profiles
+Comment=Save, edit and switch your monitor profiles
+Exec="@BINDIR@/paneltarium-manager"
+Icon=io.github.jordan_dev_stuff.Paneltarium
+Terminal=false
+Categories=Utility;Settings;HardwareSettings;
+Keywords=monitor;display;screen;profile;hotkey;
+StartupWMClass=io.github.jordan_dev_stuff.Paneltarium.Manager

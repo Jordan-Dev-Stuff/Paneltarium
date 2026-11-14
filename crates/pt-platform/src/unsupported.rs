@@ -6,6 +6,7 @@ use pt_core::{
     MonitorId, Result, Topology,
 };
 
+#[allow(dead_code)] // used on OSes without a display backend
 pub struct UnsupportedBackend;
 
 impl DisplayBackend for UnsupportedBackend {
@@ -23,6 +24,38 @@ impl DisplayBackend for UnsupportedBackend {
     }
     fn supported_modes(&self, _: &MonitorId) -> Result<Vec<DisplayMode>> {
         Err(Error::Unsupported)
+    }
+}
+
+/// A display backend that couldn't start; every call says why.
+#[allow(dead_code)] // used where a backend can be missing at run time (Linux)
+pub struct Unavailable(pub String);
+
+impl Unavailable {
+    fn error(&self) -> Error {
+        Error::Os {
+            call: "display backend",
+            code: None,
+            message: self.0.clone(),
+        }
+    }
+}
+
+impl DisplayBackend for Unavailable {
+    fn name(&self) -> &'static str {
+        "unavailable"
+    }
+    fn current_layout(&self) -> Result<DisplayLayout> {
+        Err(self.error())
+    }
+    fn apply(&self, _: &ApplyPlan, _: bool) -> Result<()> {
+        Err(self.error())
+    }
+    fn set_topology(&self, _: Topology) -> Result<()> {
+        Err(self.error())
+    }
+    fn supported_modes(&self, _: &MonitorId) -> Result<Vec<DisplayMode>> {
+        Err(self.error())
     }
 }
 

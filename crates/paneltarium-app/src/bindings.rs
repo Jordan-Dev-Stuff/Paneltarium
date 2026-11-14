@@ -1,12 +1,14 @@
 //! Which global hotkey does what. The mapping is pure (and unit-tested);
-//! [`HotkeyRegistry`] is the thin layer that registers it with the OS via the
-//! cross-platform `global-hotkey` crate.
+//! [`HotkeyRegistry`] is the thin layer that registers it with the OS: via
+//! the cross-platform `global-hotkey` crate (Windows, X11), or on Wayland by
+//! handing the list to the desktop (`pt_core::ShortcutService`, the
+//! GlobalShortcuts portal), whose events arrive with the same hotkey ids.
 
 use std::str::FromStr;
 
 use global_hotkey::GlobalHotKeyManager;
 use global_hotkey::hotkey::{Code, HotKey, Modifiers};
-use pt_core::{Hotkey, Profile, Settings};
+use pt_core::{Hotkey, Profile, Settings, Shortcut, ShortcutService};
 
 /// Something a hotkey can trigger.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,33 +92,111 @@ pub fn to_global(hotkey: &Hotkey) -> Result<HotKey, String> {
     Ok(HotKey::new(Some(mods), code))
 }
 
+/// The id a hotkey's events carry, whichever way it was registered.
+pub fn hotkey_id(hotkey: &Hotkey) -> Option<u32> {
+    to_global(hotkey).ok().map(|h| h.id())
+}
+
+/// What the desktop is asked for on Wayland: every binding, plus `extra`
+/// keys that are only meaningful while the overlay is open (they can't be
+/// bound for just that moment, since the desktop may ask the user each
+/// time). One entry per hotkey; bindings win.
+pub fn shortcuts(bindings: &[Binding], extra: &[(Hotkey, String)]) -> Vec<Shortcut> {
+    let mut out: Vec<Shortcut> = Vec::new();
+    let all = bindings
+        .iter()
+        .map(|b| (b.hotkey, sentence(&b.action.describe())))
+        .chain(extra.iter().cloned());
+    for (hotkey, description) in all {
+        let Some(id) = hotkey_id(&hotkey) else { continue };
+        let id = id.to_string();
+        if !out.iter().any(|s| s.id == id) {
+            out.push(Shortcut {
+                id,
+                description,
+                hotkey,
+            });
+        }
+    }
+    out
+}
+
+/// "profile 'TV'" → "Apply profile 'TV'", "the overlay hotkey" → "Show
+/// the profile list", ...: how it reads in the desktop's shortcut list.
+fn sentence(describe: &str) -> String {
+    match describe {
+        "the overlay hotkey" => "Show the profile list".into(),
+        "the rescue hotkey" => "Same picture on every monitor (rescue)".into(),
+        "the extend-all hotkey" => "Turn every monitor on, side by side".into(),
+        other => format!("Apply {other}"),
+    }
+}
+
+enum Os {
+    /// Grab keys directly (Windows, X11).
+    Grab(GlobalHotKeyManager),
+    /// Ask the desktop (Wayland).
+    Desktop(Box<dyn ShortcutService>),
+    /// Neither works here.
+    Off,
+}
+
 /// Owns the OS registrations. Must live on the thread running the event loop.
 pub struct HotkeyRegistry {
-    manager: GlobalHotKeyManager,
+    os: Os,
     registered: Vec<(HotKey, Action)>,
 }
 
 impl HotkeyRegistry {
-    pub fn new() -> Result<Self, String> {
-        let manager = GlobalHotKeyManager::new().map_err(|e| format!("could not start hotkeys: {e}"))?;
+    /// `desktop`: the desktop's shortcut service where apps can't grab keys.
+    pub fn new(desktop: Option<Box<dyn ShortcutService>>) -> Result<Self, String> {
+        let os = match desktop {
+            Some(service) => Os::Desktop(service),
+            None => Os::Grab(GlobalHotKeyManager::new().map_err(|e| format!("could not start hotkeys: {e}"))?),
+        };
         Ok(HotkeyRegistry {
-            manager,
+            os,
             registered: Vec::new(),
         })
     }
 
+    /// No hotkeys at all (the tray and controllers still work).
+    pub fn disabled() -> Self {
+        HotkeyRegistry {
+            os: Os::Off,
+            registered: Vec::new(),
+        }
+    }
+
     /// Replace every registration. Returns warnings for hotkeys that could
     /// not be registered (usually because another app already owns them).
-    pub fn replace(&mut self, bindings: &[Binding]) -> Vec<String> {
+    /// `overlay_keys` are the overlay's digits etc.: registered only while
+    /// it's open where keys can be grabbed, but bound up front with a desktop
+    /// shortcut service.
+    pub fn replace(&mut self, bindings: &[Binding], overlay_keys: &[(Hotkey, String)]) -> Vec<String> {
+        let manager = match &self.os {
+            Os::Grab(m) => m,
+            Os::Desktop(service) => {
+                self.registered = bindings
+                    .iter()
+                    .filter_map(|b| Some((to_global(&b.hotkey).ok()?, b.action.clone())))
+                    .collect();
+                let list = shortcuts(bindings, overlay_keys);
+                tracing::info!("asking the desktop for {} shortcut(s)", list.len());
+                service.bind(list);
+                return Vec::new(); // the outcome arrives as a ShortcutEvent
+            }
+            Os::Off => return Vec::new(),
+        };
         for (hk, _) in self.registered.drain(..) {
-            if let Err(e) = self.manager.unregister(hk) {
+            if let Err(e) = manager.unregister(hk) {
                 tracing::warn!("unregister {hk:?}: {e}");
             }
         }
         let mut warnings = Vec::new();
         for b in bindings {
             let result = to_global(&b.hotkey).and_then(|hk| {
-                self.manager
+                manager
                     .register(hk)
                     .map(|()| hk)
                     .map_err(|e| format!("{} ({}) is taken by another app: {e}", b.hotkey, b.action.describe()))
@@ -140,6 +220,9 @@ impl HotkeyRegistry {
     /// skipped: their events arrive anyway and the overlay claims them first.
     /// Returns the ones actually registered, to pass to `unregister_temporary`.
     pub fn register_temporary(&mut self, hotkeys: &[HotKey]) -> Vec<HotKey> {
+        let Os::Grab(manager) = &self.os else {
+            return Vec::new(); // bound up front, see `replace`
+        };
         let mut added = Vec::new();
         for hk in hotkeys {
             if self.registered.iter().any(|(r, _)| r.id() == hk.id())
@@ -147,7 +230,7 @@ impl HotkeyRegistry {
             {
                 continue;
             }
-            match self.manager.register(*hk) {
+            match manager.register(*hk) {
                 Ok(()) => added.push(*hk),
                 Err(e) => tracing::debug!("temporary hotkey {hk:?} unavailable: {e}"),
             }
@@ -156,8 +239,9 @@ impl HotkeyRegistry {
     }
 
     pub fn unregister_temporary(&mut self, hotkeys: &[HotKey]) {
+        let Os::Grab(manager) = &self.os else { return };
         for hk in hotkeys {
-            if let Err(e) = self.manager.unregister(*hk) {
+            if let Err(e) = manager.unregister(*hk) {
                 tracing::warn!("unregister temporary {hk:?}: {e}");
             }
         }
@@ -306,6 +390,8 @@ mod tests {
             "Backquote",
             "BracketLeft",
             "BracketRight",
+            "Enter",
+            "Escape",
         ] {
             keys.push(named.into());
         }
@@ -317,6 +403,36 @@ mod tests {
                     .contains(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SHIFT | Modifiers::META)
             );
         }
+    }
+
+    #[test]
+    fn desktop_shortcuts_cover_bindings_and_overlay_keys_once() {
+        let profiles = [profile("TV only", Some("Ctrl+Alt+2"))];
+        let (b, _) = build(&Settings::default(), &profiles);
+        let extra = [
+            (hk("Ctrl+Alt+2"), "Profile list: 2".to_string()),
+            (hk("Ctrl+Alt+Esc"), "Profile list: close".to_string()),
+        ];
+        let s = shortcuts(&b, &extra);
+        assert_eq!(s.len(), 4, "{s:?}");
+        let by_key = |k: &str| s.iter().find(|x| x.hotkey == hk(k)).unwrap();
+        assert_eq!(
+            by_key("Ctrl+Alt+2").description,
+            "Apply profile 'TV only'",
+            "the binding wins"
+        );
+        assert_eq!(by_key("Ctrl+Alt+D").description, "Show the profile list");
+        assert_eq!(
+            by_key("Ctrl+Alt+Shift+D").description,
+            "Same picture on every monitor (rescue)"
+        );
+        assert_eq!(by_key("Ctrl+Alt+Esc").description, "Profile list: close");
+        // Ids are the ones global-hotkey events carry, so either source
+        // reaches the same handler.
+        assert_eq!(
+            by_key("Ctrl+Alt+D").id,
+            hotkey_id(&hk("Ctrl+Alt+D")).unwrap().to_string()
+        );
     }
 
     #[test]

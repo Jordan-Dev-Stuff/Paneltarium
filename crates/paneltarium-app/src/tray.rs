@@ -4,8 +4,15 @@
 //!
 //! The menu contents are built by the pure [`lines`] function (tested);
 //! [`Tray`] turns them into a real `tray-icon` menu.
+//!
+//! Linux: the icon and menu are GTK, and GTK needs its main loop running to
+//! answer the desktop at any time (open the menu, notice a tray area that
+//! appears later, e.g. GNOME's extension being switched on). So the tray
+//! lives on its own thread running `gtk::main`, and [`Tray`] sends it
+//! updates. Clicks still arrive through `MenuEvent`'s handler.
 
-use pt_core::{AutostartStatus, Hotkey};
+use pt_core::{AutostartStatus, Hotkey, text};
+use pt_platform::TrayIconStyle;
 use tray_icon::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
@@ -80,9 +87,11 @@ pub fn lines(status: &Status) -> Vec<Line> {
     }
     out.extend(status.warnings.iter().map(|w| Line::Info(clip(&format!("⚠ {w}")))));
     if status.autostart == Some(AutostartStatus::DisabledInSystem) {
-        out.push(Line::Info(
-            "⚠ Start with Windows is switched off in Task Manager".into(),
-        ));
+        out.push(Line::Info(format!(
+            "⚠ {} is switched off in {}",
+            text::START_AT_SIGN_IN,
+            text::STARTUP_SETTINGS
+        )));
     }
     out.extend([
         Line::Separator,
@@ -108,29 +117,114 @@ pub fn tooltip(status: &Status) -> String {
     t.chars().take(127).collect()
 }
 
+fn create(status: &Status, style: TrayIconStyle) -> Result<TrayIcon, String> {
+    TrayIconBuilder::new()
+        .with_icon(app_icon(style))
+        .with_tooltip(tooltip(status))
+        .with_menu(Box::new(build_menu(status)?))
+        .build()
+        .map_err(|e| format!("could not create tray icon: {e}"))
+}
+
+fn update(icon: &TrayIcon, status: &Status) {
+    if let Err(e) = icon.set_tooltip(Some(tooltip(status))) {
+        tracing::warn!("tray tooltip: {e}");
+    }
+    match build_menu(status) {
+        Ok(menu) => icon.set_menu(Some(Box::new(menu))),
+        Err(e) => tracing::warn!("tray menu: {e}"),
+    }
+}
+
+/// The icon; dropping it removes it.
+#[cfg(not(target_os = "linux"))]
 pub struct Tray {
     icon: TrayIcon,
 }
 
+#[cfg(not(target_os = "linux"))]
 impl Tray {
+    /// Must be called on the event-loop thread (Windows requires it).
     pub fn new(status: &Status) -> Result<Self, String> {
-        let icon = TrayIconBuilder::new()
-            .with_icon(app_icon())
-            .with_tooltip(tooltip(status))
-            .with_menu(Box::new(build_menu(status)?))
-            .build()
-            .map_err(|e| format!("could not create tray icon: {e}"))?;
-        Ok(Tray { icon })
+        Ok(Tray {
+            icon: create(status, pt_platform::tray_icon_style())?,
+        })
     }
 
     pub fn update(&self, status: &Status) {
-        if let Err(e) = self.icon.set_tooltip(Some(tooltip(status))) {
-            tracing::warn!("tray tooltip: {e}");
-        }
-        match build_menu(status) {
-            Ok(menu) => self.icon.set_menu(Some(Box::new(menu))),
-            Err(e) => tracing::warn!("tray menu: {e}"),
-        }
+        update(&self.icon, status);
+    }
+}
+
+/// The icon, on the GTK thread; dropping this removes it.
+#[cfg(target_os = "linux")]
+pub struct Tray {
+    _private: (),
+}
+
+#[cfg(target_os = "linux")]
+thread_local! {
+    /// The icon, owned by the GTK thread.
+    static ICON: std::cell::RefCell<Option<TrayIcon>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(target_os = "linux")]
+impl Tray {
+    /// Starts the GTK thread with the icon on it.
+    pub fn new(status: &Status) -> Result<Self, String> {
+        use std::sync::mpsc;
+        let (tx, rx) = mpsc::channel();
+        let status = status.clone();
+        let style = pt_platform::tray_icon_style();
+        tracing::info!("tray icon: {style:?}");
+        std::thread::Builder::new()
+            .name("tray (gtk)".into())
+            .spawn(move || {
+                // This thread owns GTK (and GLib's default main context).
+                let created = gtk::init()
+                    .map_err(|e| format!("GTK: {e}"))
+                    .and_then(|()| create(&status, style));
+                match created {
+                    Ok(icon) => {
+                        ICON.with(|i| *i.borrow_mut() = Some(icon));
+                        let _ = tx.send(Ok(()));
+                        gtk::main();
+                    }
+                    Err(e) => {
+                        let _ = tx.send(Err(e));
+                    }
+                }
+            })
+            .map_err(|e| format!("tray thread: {e}"))?;
+        rx.recv()
+            .unwrap_or_else(|_| Err("the tray thread stopped".into()))
+            .map(|()| Tray { _private: () })
+    }
+
+    pub fn update(&self, status: &Status) {
+        let status = status.clone();
+        gtk::glib::MainContext::default().invoke(move || {
+            ICON.with(|i| {
+                if let Some(icon) = i.borrow().as_ref() {
+                    update(icon, &status);
+                }
+            });
+        });
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Drop for Tray {
+    /// Remove the icon and stop GTK; waits briefly so the icon is gone
+    /// before the app exits.
+    fn drop(&mut self) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        gtk::glib::MainContext::default().invoke(move || {
+            ICON.with(|i| i.borrow_mut().take());
+            gtk::main_quit();
+            let _ = tx.send(());
+        });
+        let _ = rx.recv_timeout(std::time::Duration::from_millis(500));
     }
 }
 
@@ -143,7 +237,7 @@ fn build_menu(status: &Status) -> Result<Menu, String> {
             Line::Manager => menu.append(&MenuItem::with_id(MANAGER_ID, "Open profile manager…", true, None)),
             Line::Autostart { checked } => menu.append(&CheckMenuItem::with_id(
                 AUTOSTART_ID,
-                "Start with Windows",
+                text::START_AT_SIGN_IN,
                 true,
                 checked,
                 None,
@@ -165,9 +259,16 @@ fn build_menu(status: &Status) -> Result<Menu, String> {
 const ICON_SIZE: u32 = 32;
 
 /// The tray icon: the app icon (a planet inside a display on a deep-space
-/// tile), which reads on both light and dark taskbars.
-pub fn app_icon() -> Icon {
-    Icon::from_rgba(pt_brand::icon_rgba(ICON_SIZE), ICON_SIZE, ICON_SIZE).expect("icon buffer has the right size")
+/// tile), which reads on both light and dark taskbars; or, where panel
+/// icons are one colour (Linux desktops), the display and planet alone in
+/// white or black.
+pub fn app_icon(style: TrayIconStyle) -> Icon {
+    let rgba = match style {
+        TrayIconStyle::Colour => pt_brand::icon_rgba(ICON_SIZE),
+        TrayIconStyle::White => pt_brand::symbolic_rgba(ICON_SIZE, pt_brand::WHITE),
+        TrayIconStyle::Black => pt_brand::symbolic_rgba(ICON_SIZE, pt_brand::BLACK),
+    };
+    Icon::from_rgba(rgba, ICON_SIZE, ICON_SIZE).expect("icon buffer has the right size")
 }
 
 #[cfg(test)]
@@ -208,7 +309,7 @@ mod tests {
         assert!(l.contains(&Line::Autostart { checked: false }));
         assert!(
             l.iter()
-                .any(|x| matches!(x, Line::Info(t) if t.contains("Task Manager")))
+                .any(|x| matches!(x, Line::Info(t) if t.contains(text::STARTUP_SETTINGS)))
         );
     }
 
@@ -253,6 +354,8 @@ mod tests {
 
     #[test]
     fn tray_icon_builds() {
-        let _ = app_icon();
+        for style in [TrayIconStyle::Colour, TrayIconStyle::White, TrayIconStyle::Black] {
+            let _ = app_icon(style);
+        }
     }
 }

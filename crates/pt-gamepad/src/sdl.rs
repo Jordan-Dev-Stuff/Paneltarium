@@ -13,6 +13,9 @@
 //!   them open. With Steam running that's harmless (Steam does the same and
 //!   does the desktop mapping itself); without Steam it would take away the
 //!   controller's mouse.
+//! - no signal handlers: SDL would otherwise turn SIGINT/SIGTERM into a quit
+//!   event nobody reads, so Ctrl+C, `kill` and logging out (Linux) couldn't
+//!   stop the program.
 
 use std::collections::HashMap;
 use std::ffi::{CStr, c_char};
@@ -57,6 +60,7 @@ impl Sdl {
         set_hint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, c"1");
         set_hint(SDL_HINT_JOYSTICK_WGI, c"0");
         set_hint(SDL_HINT_JOYSTICK_ENHANCED_REPORTS, c"auto");
+        set_hint(SDL_HINT_NO_SIGNAL_HANDLERS, c"1");
         let s = Sdl {
             pads: HashMap::new(),
             _in_use: in_use,

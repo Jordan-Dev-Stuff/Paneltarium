@@ -13,6 +13,8 @@ pub const SPACE_TOP: [u8; 3] = [0x2E, 0x10, 0x65];
 pub const SPACE_BOTTOM: [u8; 3] = [0x7C, 0x3A, 0xED];
 /// The display outline and the planet.
 pub const WHITE: [u8; 3] = [0xFF, 0xFF, 0xFF];
+/// The one-colour icon on light panels.
+pub const BLACK: [u8; 3] = [0x00, 0x00, 0x00];
 
 /// Where the screen opening is inside Phosphor's bold "monitor" glyph, as
 /// fractions of the glyph's height (measured from the font: the opening
@@ -31,7 +33,16 @@ pub fn icon_rgba(size: u32) -> Vec<u8> {
     let mut img = Image::new(size as usize);
     let s = size as f32;
     img.tile(s * 0.22);
-    img.display_with_planet(Box2::centered(s / 2.0, s * 0.52, s * 0.80), WHITE);
+    img.display_with_planet(Box2::centered(s / 2.0, s * 0.52, s * 0.80), WHITE, WHITE);
+    img.into_rgba8()
+}
+
+/// One-colour ("symbolic") icon: display and planet both in `color`, no
+/// tile, like the other icons in GNOME's and KDE's top bars and panels.
+pub fn symbolic_rgba(size: u32, color: [u8; 3]) -> Vec<u8> {
+    let mut img = Image::new(size as usize);
+    let s = size as f32;
+    img.display_with_planet(Box2::centered(s / 2.0, s / 2.0, s), color, color);
     img.into_rgba8()
 }
 
@@ -41,7 +52,7 @@ pub fn icon_rgba(size: u32) -> Vec<u8> {
 pub fn glyph_rgba(size: u32, display: [u8; 3]) -> Vec<u8> {
     let mut img = Image::new(size as usize);
     let s = size as f32;
-    img.display_with_planet(Box2::centered(s / 2.0, s / 2.0, s), display);
+    img.display_with_planet(Box2::centered(s / 2.0, s / 2.0, s), display, WHITE);
     img.into_rgba8()
 }
 
@@ -128,7 +139,7 @@ impl Image {
 
     /// The display outline fitted into `target`, with the planet centred in
     /// its screen. Returns (screen opening, planet) boxes, for tests.
-    fn display_with_planet(&mut self, target: Box2, display: [u8; 3]) -> Option<(Box2, Box2)> {
+    fn display_with_planet(&mut self, target: Box2, display: [u8; 3], planet: [u8; 3]) -> Option<(Box2, Box2)> {
         // Bold weight, so the outline survives 16 px.
         let monitor = glyph(egui_phosphor::bold::MONITOR, egui_phosphor::bytes::bold::FONT);
         let b = self.glyph(&monitor, target, display)?;
@@ -140,9 +151,9 @@ impl Image {
             y1: b.y0 + h * SCREEN_BOTTOM,
         };
         let (cx, cy) = ((screen.x0 + screen.x1) / 2.0, (screen.y0 + screen.y1) / 2.0);
-        let planet = glyph(egui_phosphor::fill::PLANET, egui_phosphor::bytes::fill::FONT);
+        let planet_glyph = glyph(egui_phosphor::fill::PLANET, egui_phosphor::bytes::fill::FONT);
         let side = (screen.y1 - screen.y0) * PLANET_FILL;
-        let p = self.glyph(&planet, Box2::centered(cx, cy, side), WHITE)?;
+        let p = self.glyph(&planet_glyph, Box2::centered(cx, cy, side), planet)?;
         Some((screen, p))
     }
 
@@ -240,12 +251,26 @@ mod tests {
     }
 
     #[test]
+    fn symbolic_version_uses_one_colour() {
+        for color in [WHITE, BLACK] {
+            let rgba = symbolic_rgba(32, color);
+            let px = rgba.as_chunks::<4>().0;
+            assert!(px.iter().all(|p| p[3] == 0 || p[..3] == color), "only {color:?}");
+            assert!(
+                px.iter().filter(|p| p[3] == 255).count() > 100,
+                "display and planet are drawn"
+            );
+            assert_eq!(at(&rgba, 32, 0, 0)[3], 0, "no tile");
+        }
+    }
+
+    #[test]
     fn planet_is_centred_in_the_screen() {
         for size in [16, 24, 32, 64, 256] {
             let s = size as f32;
             let mut img = Image::new(size as usize);
             let (screen, planet) = img
-                .display_with_planet(Box2::centered(s / 2.0, s * 0.52, s * 0.80), WHITE)
+                .display_with_planet(Box2::centered(s / 2.0, s * 0.52, s * 0.80), WHITE, WHITE)
                 .unwrap();
             let centre = |b: &Box2| ((b.x0 + b.x1) / 2.0, (b.y0 + b.y1) / 2.0);
             let ((sx, sy), (px, py)) = (centre(&screen), centre(&planet));

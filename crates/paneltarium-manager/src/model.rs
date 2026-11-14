@@ -324,7 +324,9 @@ impl Model {
             .svc
             .save_settings(&s)
             .map(|()| match choice {
-                StartupProfile::None => "At sign-in: monitors are left as Windows set them up".to_string(),
+                StartupProfile::None => {
+                    format!("At sign-in: monitors are left as {} set them up", pt_core::text::SYSTEM)
+                }
                 StartupProfile::Last => "At sign-in: load the last used profile".to_string(),
                 StartupProfile::Profile(n) => format!("At sign-in: load '{n}'"),
             })

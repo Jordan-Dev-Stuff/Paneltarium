@@ -38,6 +38,7 @@ fn run() -> Result<(), String> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Paneltarium — Profiles")
+            .with_app_id(pt_core::text::MANAGER_APP_ID)
             .with_inner_size([940.0, 640.0])
             .with_min_inner_size([760.0, 480.0])
             .with_icon(egui::IconData {

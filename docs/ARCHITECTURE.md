@@ -21,7 +21,10 @@ pt-core     │ MonitorService (facade)                               │
             ┌───────────────────────────▼───────────────────────────┐
 pt-platform │ windows/  ccd.rs (all unsafe Win32 calls)             │
             │           display.rs (WindowsDisplayBackend)          │
-            │ linux/    autostart only so far                       │
+            │ linux/    outputs.rs (LinuxDisplayBackend) + a driver │
+            │           per desktop: mutter (GNOME D-Bus), kscreen, │
+            │           wlroots (wlr-randr), xrandr; portal.rs      │
+            │           (Wayland hotkeys), x11.rs, autostart        │
             │ unsupported.rs (so everything builds and tests on CI) │
             └───────────────────────────────────────────────────────┘
 
@@ -35,13 +38,14 @@ pt-brand    the app icon (Phosphor "monitor" + "planet", purple tile), drawn at
 ## Rules
 
 1. **Only `pt-platform` calls OS APIs.** Each OS lives in its own module
-   behind `#[cfg(...)]`. Adding Linux = new module + one `cfg` arm in
+   behind `#[cfg(...)]`, with one `cfg` arm per OS in
    `pt-platform/src/lib.rs`.
 2. **New OS-specific needs get a trait in `pt-core`** (`DisplayBackend`,
-   `KeyboardState`, `Autostart`), implemented per OS in
+   `KeyboardState`, `Autostart`, `ShortcutService`), implemented per OS in
    `pt-platform`. The front ends otherwise use cross-platform crates
    (winit, global-hotkey, tray-icon, softbuffer); the only OS-specific lines
-   outside `pt-platform` are window-style tweaks behind `#[cfg(windows)]`.
+   outside `pt-platform` are window-style tweaks behind `#[cfg(...)]` (and
+   picking winit's X11 backend for the overlay on Linux).
 3. **Front ends only use `MonitorService`.** The CLI, hotkey handler and UI
    all apply profiles the same way, so the CLI tests cover the real logic.
 4. **Logic that can be pure, is.** Matching saved monitors to connected ones,
@@ -91,6 +95,18 @@ pt-brand    the app icon (Phosphor "monitor" + "planet", purple tile), drawn at
   replaced (`Autostart::migrate_legacy`).
 - **Cleared settings are written as `""`**, not left out: a missing key
   means "use the default".
+- **Linux = one backend, many drivers.** Each desktop has its own display
+  API, so `linux/outputs.rs` holds the logic (mode and scale choice,
+  duplicate groups, pixel ↔ logical coordinates) and each driver only reads
+  a snapshot and carries out settings. CLI-tool drivers run through a
+  `Runner` trait, so tests play back recorded `kscreen-doctor` / `wlr-randr`
+  / `xrandr` output and check the exact arguments sent. See ROADMAP step 12.
+- **Profiles are in pixels on every OS.** Wayland compositors use scaled
+  units; `linux/coords.rs` converts monitor by monitor (keeping adjacency
+  and lined-up edges), because with mixed scales no single factor works.
+- **Wayland hotkeys come from the desktop** (GlobalShortcuts portal); their
+  events carry the same ids as `global-hotkey`'s, so the app handles both
+  the same way. The overlay's own keys are bound up front there.
 - **Testing without hardware**: set `PANELTARIUM_MOCK_LAYOUT=<file.toml>` and
   the CLI uses a file-backed fake backend; `PANELTARIUM_HOME=<dir>` moves
   all config files.
